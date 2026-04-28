@@ -1,0 +1,31 @@
+# Secretos y variables de entorno
+.env
+.env.local
+.env.*.local
+.claude/*
+
+# Dependencias
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+
+# Build
+dist/
+.next/
+out/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Logs
+*.log
+
+# Documentos de salida de los agentes generada (no subir archivos pesados)
+salida/*
+!salida/**/.gitkeep

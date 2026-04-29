@@ -760,7 +760,7 @@ export type Database = {
       proyectos: {
         Row: {
           actualizado_en: string
-          area_negocio_id: string
+          area_negocio_id: string | null
           creado_en: string
           descripcion: string | null
           empresa_id: string | null
@@ -773,7 +773,7 @@ export type Database = {
         }
         Insert: {
           actualizado_en?: string
-          area_negocio_id: string
+          area_negocio_id?: string | null
           creado_en?: string
           descripcion?: string | null
           empresa_id?: string | null
@@ -786,7 +786,7 @@ export type Database = {
         }
         Update: {
           actualizado_en?: string
-          area_negocio_id?: string
+          area_negocio_id?: string | null
           creado_en?: string
           descripcion?: string | null
           empresa_id?: string | null

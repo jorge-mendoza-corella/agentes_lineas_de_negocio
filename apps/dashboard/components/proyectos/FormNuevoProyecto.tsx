@@ -25,7 +25,6 @@ export default function FormNuevoProyecto({ areas, empresas }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!areaId) { setError('Selecciona un área'); return; }
     setCargando(true);
     setError('');
 
@@ -35,7 +34,7 @@ export default function FormNuevoProyecto({ areas, empresas }: Props) {
       .insert({
         nombre,
         descripcion: descripcion || null,
-        area_negocio_id: areaId,
+        area_negocio_id: areaId || null,
         empresa_id: empresaId || null,
         repo_url: repoUrl || null,
       })
@@ -60,14 +59,13 @@ export default function FormNuevoProyecto({ areas, empresas }: Props) {
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Área *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Área <span className="text-gray-400 font-normal">(opcional)</span></label>
         <select
-          required
           value={areaId}
           onChange={e => setAreaId(e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">Seleccionar área...</option>
+          <option value="">Sin área asignada</option>
           {areas.map(a => (
             <option key={a.id} value={a.id}>{a.nombre}</option>
           ))}

@@ -72,9 +72,10 @@ export default function GestionEmpresa({ empresa, servicios, usuarios }: Props) 
         </span>
       </div>
 
-      {/* Servicios contratados */}
+      {/* Módulos habilitados */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
-        <h2 className="text-base font-semibold text-gray-900 mb-4">Servicios contratados</h2>
+        <h2 className="text-base font-semibold text-gray-900 mb-1">Módulos habilitados</h2>
+        <p className="text-xs text-gray-400 mb-4">Acceso a áreas de la plataforma. Para tarifas y facturación, ve a la sección "Facturación y servicios" más abajo.</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {TODOS_SERVICIOS.map(s => {
             const activo = serviciosActivos.has(s);

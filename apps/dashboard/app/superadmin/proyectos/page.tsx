@@ -42,6 +42,8 @@ export default async function ProyectosPage() {
     proyectos: proyectos.filter(p => p.areas_negocio?.nombre === area.nombre),
   }));
 
+  const sinArea = proyectos.filter(p => !p.areas_negocio);
+
   const total   = proyectos.length;
   const activos = proyectos.filter(p => p.estado === 'activo').length;
 
@@ -108,6 +110,47 @@ export default async function ProyectosPage() {
           </div>
         </div>
       ))}
+
+      {sinArea.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Sin área</span>
+            <span className="ml-auto text-xs text-gray-400">{sinArea.length} proyectos</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {sinArea.map(p => {
+              const reqs = p.requerimientos ?? [];
+              const completados = reqs.filter(r => r.estado === 'completado').length;
+              const empresaNombre = empresas.find(e => e.id === p.empresa_id)?.nombre;
+              return (
+                <Link
+                  key={p.id}
+                  href={`/superadmin/proyectos/${p.id}`}
+                  className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900">{p.nombre}</p>
+                    {p.descripcion && (
+                      <p className="text-xs text-gray-400 mt-0.5 truncate max-w-md">{p.descripcion}</p>
+                    )}
+                    {empresaNombre && (
+                      <p className="text-xs text-blue-500 mt-0.5">🏢 {empresaNombre}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {reqs.length > 0 && (
+                      <span className="text-xs text-gray-400">{completados}/{reqs.length} reqs</span>
+                    )}
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${BADGE_ESTADO[p.estado] ?? ''}`}>
+                      {p.estado}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {total === 0 && (
         <div className="text-center py-16 text-sm text-gray-400">

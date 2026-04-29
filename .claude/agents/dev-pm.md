@@ -33,6 +33,8 @@ Si la solicitud viene directamente del usuario sin pasar por `pm-global`, solici
   - `dev-presentaciones` — HTML slides, python-pptx, Google Slides
   - `dev-videojuegos` — GameMaker Studio 2, GML
   - `dev-imagenes` — Imagen 4 vía Gemini API
+  - `dev-documentador` — documentación técnica/funcional, APIs, diagramas E2E/DER/flujo, manuales de usuario
+  - `dev-soporte` — soporte a producción, atención usuario final, capacitación, comunicación por email/WhatsApp/Telegram
 - Consolidas resultados, identificas bloqueos y comunicas decisiones.
 - Indicas explícitamente qué pasos del flujo estándar omitiste y por qué.
 
@@ -48,7 +50,8 @@ Si la solicitud viene directamente del usuario sin pasar por `pm-global`, solici
 6. `dev-frontend` → implementa UI.
 7. `dev-testing` → escribe pruebas.
 8. `dev-devops` → pipeline y deploy.
-9. PM → reporta al usuario.
+9. `dev-documentador` → documenta la entrega (API, flujos, manual de usuario).
+10. PM → reporta al usuario.
 
 Si la solicitud es chica, salta pasos y declara cuáles omitiste.
 

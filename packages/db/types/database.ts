@@ -304,6 +304,164 @@ export type Database = {
           },
         ]
       }
+      cotizaciones: {
+        Row: {
+          created_at: string
+          descuento_pct: number
+          empresa_id: string | null
+          estado: string
+          folio: string | null
+          generada_por: string | null
+          id: string
+          moneda: string
+          notas: string | null
+          proyecto_id: string | null
+          subtotal: number
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          descuento_pct?: number
+          empresa_id?: string | null
+          estado?: string
+          folio?: string | null
+          generada_por?: string | null
+          id?: string
+          moneda?: string
+          notas?: string | null
+          proyecto_id?: string | null
+          subtotal?: number
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          descuento_pct?: number
+          empresa_id?: string | null
+          estado?: string
+          folio?: string | null
+          generada_por?: string | null
+          id?: string
+          moneda?: string
+          notas?: string | null
+          proyecto_id?: string | null
+          subtotal?: number
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_generada_por_fkey"
+            columns: ["generada_por"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_proyecto_id_fkey"
+            columns: ["proyecto_id"]
+            isOneToOne: false
+            referencedRelation: "proyectos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cotizacion_lineas: {
+        Row: {
+          agente_nombre: string
+          cotizacion_id: string
+          created_at: string
+          descripcion: string
+          horas: number
+          id: string
+          orden: number
+          precio_hora: number
+          subtotal: number
+          tarea_id: string | null
+        }
+        Insert: {
+          agente_nombre: string
+          cotizacion_id: string
+          created_at?: string
+          descripcion: string
+          horas?: number
+          id?: string
+          orden?: number
+          precio_hora?: number
+          tarea_id?: string | null
+        }
+        Update: {
+          agente_nombre?: string
+          cotizacion_id?: string
+          created_at?: string
+          descripcion?: string
+          horas?: number
+          id?: string
+          orden?: number
+          precio_hora?: number
+          tarea_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizacion_lineas_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizacion_lineas_tarea_id_fkey"
+            columns: ["tarea_id"]
+            isOneToOne: false
+            referencedRelation: "tareas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tarifas_agentes: {
+        Row: {
+          activo: boolean
+          agente_nombre: string
+          actualizado_en: string
+          area: string
+          creado_en: string
+          display_name: string
+          id: string
+          moneda: string
+          tarifa_hora: number
+        }
+        Insert: {
+          activo?: boolean
+          agente_nombre: string
+          actualizado_en?: string
+          area?: string
+          creado_en?: string
+          display_name: string
+          id?: string
+          moneda?: string
+          tarifa_hora?: number
+        }
+        Update: {
+          activo?: boolean
+          agente_nombre?: string
+          actualizado_en?: string
+          area?: string
+          creado_en?: string
+          display_name?: string
+          id?: string
+          moneda?: string
+          tarifa_hora?: number
+        }
+        Relationships: []
+      }
       empresa_servicios: {
         Row: {
           activo: boolean

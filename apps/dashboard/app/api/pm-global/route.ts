@@ -36,7 +36,7 @@ async function transcribirConGemini(audioBase64: string, mimeType: string): Prom
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const cleanMime = mimeType.split(';')[0]; // elimina parámetros como ;codecs=opus
+  const cleanMime = mimeType.split(';')[0] ?? mimeType;
 
   const result = await model.generateContent([
     'Transcribe exactamente este mensaje de voz en español. Responde únicamente con la transcripción, sin texto adicional ni explicaciones:',
@@ -173,7 +173,8 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const { data: perfil } = await supabase.from('perfiles').select('rol,nombre').eq('id', user.id).single();
+  const { data: perfilRaw } = await supabase.from('perfiles').select('rol,nombre').eq('id', user.id).single();
+  const perfil = perfilRaw as { rol: string; nombre: string } | null;
   if (!perfil || !['superadmin', 'plataforma_admin'].includes(perfil.rol)) {
     return new Response('Forbidden', { status: 403 });
   }
@@ -183,6 +184,8 @@ export async function POST(req: NextRequest) {
     conversacion_id?: string;
     audio_base64?: string;
     audio_mime?: string;
+    empresa_id?: string;
+    proyecto_id?: string;
   };
   try { body = await req.json(); } catch { return new Response('Bad Request', { status: 400 }); }
 
@@ -191,7 +194,13 @@ export async function POST(req: NextRequest) {
     return new Response('Se requiere mensaje o audio', { status: 400 });
   }
 
-  const db = serviceClient();
+  let db: ReturnType<typeof serviceClient>;
+  try {
+    db = serviceClient();
+  } catch (e) {
+    console.error('[pm-global] serviceClient error:', e);
+    return new Response(JSON.stringify({ type: 'error', message: `Error DB: ${String(e)}` }), { status: 500 });
+  }
 
   // Transcribir audio si aplica (Gemini → texto)
   let mensajeTexto = body.mensaje?.trim() ?? '';
@@ -199,21 +208,25 @@ export async function POST(req: NextRequest) {
     try {
       mensajeTexto = await transcribirConGemini(body.audio_base64!, body.audio_mime!);
     } catch (e) {
-      return new Response(`Error transcribiendo audio: ${e instanceof Error ? e.message : e}`, { status: 500 });
+      console.error('[pm-global] transcripción error:', e);
+      return new Response(JSON.stringify({ type: 'error', message: `Error transcribiendo audio: ${e instanceof Error ? e.message : String(e)}` }), { status: 500 });
     }
-    if (!mensajeTexto) return new Response('No se pudo transcribir el audio', { status: 400 });
+    if (!mensajeTexto) return new Response(JSON.stringify({ type: 'error', message: 'No se pudo transcribir el audio' }), { status: 400 });
   }
 
   // Crear o retomar conversación
   let convId = body.conversacion_id ?? null;
   if (!convId) {
-    const { data } = await db.from('conversaciones_pm').insert({
+    const { data, error: errConv } = await db.from('conversaciones_pm').insert({
       usuario_id: user.id,
       titulo: mensajeTexto.slice(0, 80),
+      empresa_id: body.empresa_id ?? null,
+      proyecto_id: body.proyecto_id ?? null,
     }).select('id').single();
+    if (errConv) console.error('[pm-global] crear conversación error:', errConv);
     convId = data?.id ?? null;
   }
-  if (!convId) return new Response('Error creando conversación', { status: 500 });
+  if (!convId) return new Response(JSON.stringify({ type: 'error', message: 'Error creando conversación en DB' }), { status: 500 });
   const conversacionId = convId;
 
   // Guardar mensaje del usuario (siempre en texto, con flag de origen si es audio)
@@ -307,7 +320,7 @@ export async function POST(req: NextRequest) {
           if (toolBlocks.length > 0 && stopReason === 'tool_use') {
             const results: Anthropic.ToolResultBlockParam[] = toolBlocks.map(b => {
               if (b.type !== 'tool_use') return null!;
-              const exec = toolsEjecutados.findLast(t => t.tool === b.name);
+              const exec = [...toolsEjecutados].reverse().find(t => t.tool === b.name);
               return { type: 'tool_result', tool_use_id: b.id, content: exec?.result ?? '{"error":"no ejecutado"}' };
             });
             loop = [...loop, { role: 'user', content: results }];
@@ -320,7 +333,8 @@ export async function POST(req: NextRequest) {
           conversacion_id: conversacionId,
           rol: 'agente',
           contenido: textoFinal,
-          metadata: { tool_calls: toolsEjecutados, modelo: 'claude-sonnet-4-6' },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          metadata: { tool_calls: toolsEjecutados, modelo: 'claude-sonnet-4-6' } as any,
         }).select('id').single();
 
         await db.from('conversaciones_pm').update({ updated_at: new Date().toISOString() }).eq('id', conversacionId);

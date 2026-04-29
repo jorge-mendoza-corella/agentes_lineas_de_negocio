@@ -242,26 +242,46 @@ export type Database = {
       conversaciones_pm: {
         Row: {
           created_at: string
+          empresa_id: string | null
           id: string
+          proyecto_id: string | null
           titulo: string | null
           updated_at: string
           usuario_id: string
         }
         Insert: {
           created_at?: string
+          empresa_id?: string | null
           id?: string
+          proyecto_id?: string | null
           titulo?: string | null
           updated_at?: string
           usuario_id: string
         }
         Update: {
           created_at?: string
+          empresa_id?: string | null
           id?: string
+          proyecto_id?: string | null
           titulo?: string | null
           updated_at?: string
           usuario_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "conversaciones_pm_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversaciones_pm_proyecto_id_fkey"
+            columns: ["proyecto_id"]
+            isOneToOne: false
+            referencedRelation: "proyectos"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "conversaciones_pm_usuario_id_fkey"
             columns: ["usuario_id"]

@@ -21,6 +21,10 @@ interface ToolEvent {
 interface Props {
   conversacionIdInicial: string | null;
   mensajesIniciales: Array<{ id: string; rol: string; contenido: string; created_at: string }>;
+  empresas: Array<{ id: string; nombre: string }>;
+  proyectos: Array<{ id: string; nombre: string }>;
+  empresaIdInicial?: string | null;
+  proyectoIdInicial?: string | null;
 }
 
 const TOOL_META: Record<string, { emoji: string; label: string }> = {
@@ -47,7 +51,7 @@ function fmtTime(s: number) {
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onload = () => resolve((reader.result as string).split(',')[1] ?? '');
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
@@ -86,9 +90,20 @@ function stopSpeaking() {
   window.speechSynthesis.cancel();
 }
 
-export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Props) {
+export default function ChatPM({
+  conversacionIdInicial,
+  mensajesIniciales,
+  empresas,
+  proyectos,
+  empresaIdInicial = null,
+  proyectoIdInicial = null,
+}: Props) {
   const router = useRouter();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type SpeechRec = any;
   const [conversacionId, setConversacionId] = useState<string | null>(conversacionIdInicial);
+  const [empresaId, setEmpresaId] = useState<string | null>(empresaIdInicial);
+  const [proyectoId, setProyectoId] = useState<string | null>(proyectoIdInicial);
   const [mensajes, setMensajes] = useState<MensajeUI[]>(
     mensajesIniciales.map(m => ({
       id: m.id,
@@ -104,7 +119,8 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
   const [sttSupported, setSttSupported] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -135,17 +151,17 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
       recognitionRef.current?.stop();
       return;
     }
-    const SpeechRec =
-      (window as unknown as { SpeechRecognition: typeof SpeechRecognition }).SpeechRecognition ??
-      (window as unknown as { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition;
-    if (!SpeechRec) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SpeechRecCtor: SpeechRec = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SpeechRecCtor) return;
 
-    const rec = new SpeechRec();
+    const rec: SpeechRec = new SpeechRecCtor();
     rec.lang = 'es-MX';
     rec.continuous = false;
     rec.interimResults = false;
 
-    rec.onresult = (e: SpeechRecognitionEvent) => {
+    rec.onresult = (e: { results: { 0: { 0: { transcript: string } } } }) => {
       const transcript = e.results[0][0].transcript;
       setInput(prev => prev ? `${prev} ${transcript}` : transcript);
     };
@@ -233,7 +249,13 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
       const res = await fetch('/api/pm-global', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio_base64: base64, audio_mime: mimeType, conversacion_id: conversacionId ?? undefined }),
+        body: JSON.stringify({
+          audio_base64: base64,
+          audio_mime: mimeType,
+          conversacion_id: conversacionId ?? undefined,
+          empresa_id: empresaId ?? undefined,
+          proyecto_id: proyectoId ?? undefined,
+        }),
       });
 
       if (!res.ok) throw new Error(await readHttpError(res));
@@ -325,7 +347,12 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
       const res = await fetch('/api/pm-global', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mensaje: texto, conversacion_id: conversacionId ?? undefined }),
+        body: JSON.stringify({
+          mensaje: texto,
+          conversacion_id: conversacionId ?? undefined,
+          empresa_id: empresaId ?? undefined,
+          proyecto_id: proyectoId ?? undefined,
+        }),
       });
 
       if (!res.ok) throw new Error(await readHttpError(res));
@@ -529,6 +556,36 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
 
       {/* Input */}
       <div className="px-4 py-3 border-t border-gray-100">
+        {/* Selector empresa/proyecto — solo en nueva conversación */}
+        {!conversacionId && (empresas.length > 0 || proyectos.length > 0) && (
+          <div className="flex gap-2 mb-2">
+            {empresas.length > 0 && (
+              <select
+                value={empresaId ?? ''}
+                onChange={e => setEmpresaId(e.target.value || null)}
+                className="flex-1 text-xs rounded-lg border border-gray-200 px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">🏢 Empresa (opcional)</option>
+                {empresas.map(e => (
+                  <option key={e.id} value={e.id}>{e.nombre}</option>
+                ))}
+              </select>
+            )}
+            {proyectos.length > 0 && (
+              <select
+                value={proyectoId ?? ''}
+                onChange={e => setProyectoId(e.target.value || null)}
+                className="flex-1 text-xs rounded-lg border border-gray-200 px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">📁 Proyecto (opcional)</option>
+                {proyectos.map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
@@ -541,34 +598,50 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
             className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:bg-gray-50"
           />
           <div className="flex flex-col gap-2">
-            {/* Botón STT */}
+            {/* Botón STT — dictar texto al textarea */}
             {sttSupported && (
               <button
                 onClick={toggleMic}
                 disabled={isStreaming}
-                title={isListening ? 'Detener grabación' : 'Dictar mensaje (Google STT)'}
-                className={`px-3 py-2.5 rounded-xl text-sm font-medium transition-colors shrink-0 ${
+                title={isListening ? 'Detener dictado' : 'Dictar texto al campo (Web Speech)'}
+                className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-xl text-xs font-medium transition-all shrink-0 ${
                   isListening
-                    ? 'bg-red-500 text-white animate-pulse'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed'
+                    ? 'bg-red-500 text-white shadow-lg shadow-red-200'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed'
                 }`}
               >
                 {isListening ? (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <rect x="6" y="6" width="8" height="8" rx="1" />
-                  </svg>
+                  <>
+                    <span className="flex items-end gap-0.5 h-4">
+                      {[...Array(4)].map((_, i) => (
+                        <span
+                          key={i}
+                          className="w-0.5 bg-white rounded-full animate-bounce"
+                          style={{ height: `${[80, 100, 60, 90][i]}%`, animationDelay: `${i * 70}ms` }}
+                        />
+                      ))}
+                    </span>
+                    <span className="text-[9px] leading-none">Escucha...</span>
+                  </>
                 ) : (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                  </svg>
+                  <>
+                    <span className="relative flex items-center justify-center">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4z"/>
+                        <path d="M19 11a1 1 0 00-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7 7 0 006 6.93V20H9a1 1 0 000 2h6a1 1 0 000-2h-2v-2.07A7 7 0 0019 11z"/>
+                      </svg>
+                      <span className="absolute -top-1 -right-2 text-[8px] font-bold bg-emerald-600 text-white rounded px-0.5 leading-tight">STT</span>
+                    </span>
+                    <span className="text-[9px] leading-none">Dictar</span>
+                  </>
                 )}
               </button>
             )}
-            {/* Botón grabar y transcribir con Gemini */}
+            {/* Botón grabar → Gemini transcribe → envía al agente */}
             <button
               onClick={isRecording ? detenerYEnviarAudio : iniciarGrabacion}
               disabled={isStreaming}
-              title={isRecording ? 'Detener y enviar al agente' : 'Grabar mensaje de voz · se transcribe con Gemini'}
+              title={isRecording ? 'Detener y enviar al agente' : 'Grabar audio · Gemini lo transcribe y envía al PM'}
               className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-xl text-xs font-medium transition-all shrink-0 ${
                 isRecording
                   ? 'bg-red-500 text-white shadow-lg shadow-red-200'
@@ -577,7 +650,6 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
             >
               {isRecording ? (
                 <>
-                  {/* Onda pulsante mientras graba */}
                   <span className="flex items-end gap-0.5 h-4">
                     {[...Array(4)].map((_, i) => (
                       <span
@@ -591,13 +663,11 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
                 </>
               ) : (
                 <>
-                  {/* Micrófono con ondas */}
                   <span className="relative flex items-center justify-center">
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4z"/>
                       <path d="M19 11a1 1 0 00-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7 7 0 006 6.93V20H9a1 1 0 000 2h6a1 1 0 000-2h-2v-2.07A7 7 0 0019 11z"/>
                     </svg>
-                    {/* Partícula "AI" */}
                     <span className="absolute -top-1 -right-1.5 text-[8px] font-bold bg-violet-600 text-white rounded px-0.5 leading-tight">AI</span>
                   </span>
                   <span className="text-[9px] leading-none">Grabar</span>
@@ -620,7 +690,7 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
           </div>
         </div>
         <p className="text-[10px] text-gray-400 mt-1.5 ml-1">
-          Ctrl+Enter para enviar{sttSupported ? ' · 🎤 dictar texto' : ''} · <span className="text-violet-500">■ Grabar</span> transcribe tu voz con Gemini
+          Ctrl+Enter · <span className="text-emerald-600 font-medium">STT</span> dicta al campo · <span className="text-violet-600 font-medium">AI</span> graba y envía directo al PM
         </p>
       </div>
     </div>

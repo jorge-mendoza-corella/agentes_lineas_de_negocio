@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import LogoutButton from './LogoutButton';
+import { APP_VERSION } from '@/lib/version';
 
 interface Props {
   nombre: string;
@@ -53,8 +54,9 @@ export default function NavSuperadmin({ nombre }: Props) {
         </Link>
       </nav>
 
-      <div className="px-3 py-4 border-t border-gray-700">
+      <div className="px-3 py-4 border-t border-gray-700 space-y-2">
         <LogoutButton className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors" />
+        <p className="text-center text-[10px] text-gray-600 font-mono select-none">{APP_VERSION}</p>
       </div>
     </aside>
   );

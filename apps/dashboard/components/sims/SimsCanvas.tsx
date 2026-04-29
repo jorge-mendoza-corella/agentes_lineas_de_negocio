@@ -45,10 +45,34 @@ const ANIM_LABEL: Record<EstadoAnim, string> = {
 };
 
 export default function SimsCanvas({ oficinasIniciales, avatoresIniciales, bitacoraInicial }: Props) {
+  const [oficinas, setOficinas] = useState<Oficina[]>(oficinasIniciales);
   const [avatares, setAvatares] = useState<Avatar[]>(avatoresIniciales);
   const [bitacora, setBitacora] = useState<Entrada[]>(bitacoraInicial);
   const supabase = createClient();
 
+  // Carga inicial desde el cliente si los props llegaron vacíos
+  useEffect(() => {
+    if (oficinasIniciales.length === 0) {
+      supabase.from('oficinas').select('*').order('piso').then(({ data }) => {
+        if (data) setOficinas(data);
+      });
+    }
+    if (avatoresIniciales.length === 0) {
+      supabase.from('avatares').select('*').then(({ data }) => {
+        if (data) setAvatares(data);
+      });
+    }
+    if (bitacoraInicial.length === 0) {
+      supabase.from('bitacora_actividad')
+        .select('id, agente, accion, creado_en')
+        .order('creado_en', { ascending: false })
+        .limit(30)
+        .then(({ data }) => { if (data) setBitacora(data); });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Realtime
   useEffect(() => {
     const canal = supabase
       .channel('sims-realtime')
@@ -58,10 +82,12 @@ export default function SimsCanvas({ oficinasIniciales, avatoresIniciales, bitac
             a.id === (payload.new as Avatar).id ? { ...a, ...(payload.new as Avatar) } : a
           ));
         }
+        if (payload.eventType === 'INSERT') {
+          setAvatares(prev => [...prev, payload.new as Avatar]);
+        }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bitacora_actividad' }, payload => {
-        const nueva = payload.new as Entrada;
-        setBitacora(prev => [nueva, ...prev].slice(0, 30));
+        setBitacora(prev => [payload.new as Entrada, ...prev].slice(0, 30));
       })
       .subscribe();
 
@@ -82,47 +108,49 @@ export default function SimsCanvas({ oficinasIniciales, avatoresIniciales, bitac
         </div>
 
         <div className="p-4">
-          <div className="space-y-2" style={{ minWidth: `${1200 * ESCALA + 32}px` }}>
-            {oficinasIniciales.map(oficina => {
-              const ocupantes = avatares.filter(a => a.oficina_id === oficina.id);
-              return (
-                <div key={oficina.id} className="relative rounded-xl overflow-hidden border border-gray-100"
-                  style={{ background: oficina.color_hex ?? '#f9fafb', height: `${oficina.alto * ESCALA}px`, width: `${oficina.ancho * ESCALA}px` }}
-                >
-                  <span className="absolute top-1.5 left-2 text-xs font-semibold text-gray-500 opacity-70 select-none">
-                    {oficina.nombre}
-                  </span>
-                  {ocupantes.map(av => {
-                    const x = (av.posicion_actual_x ?? 100) * ESCALA;
-                    const y = (av.posicion_actual_y ?? 60) * ESCALA;
-                    const emoji = av.agente_nombre ? EMOJI[av.agente_nombre] ?? '🤖' : '👤';
-                    const animClass = ANIM_CLASS[av.estado_animacion] ?? '';
-                    const animLabel = ANIM_LABEL[av.estado_animacion] ?? '';
-                    return (
-                      <div
-                        key={av.id}
-                        className="absolute flex flex-col items-center gap-0.5 transition-all duration-700"
-                        style={{ left: `${x}px`, top: `${y}px`, transform: 'translate(-50%,-50%)' }}
-                        title={`${av.nombre_mostrar} — ${av.estado_animacion}`}
-                      >
-                        <div className={`text-xl leading-none ${animClass}`}>
-                          {emoji}
+          {oficinas.length === 0 ? (
+            <div className="text-center py-10 text-sm text-gray-400">Cargando edificio...</div>
+          ) : (
+            <div className="space-y-2" style={{ minWidth: `${1200 * ESCALA + 32}px` }}>
+              {oficinas.map(oficina => {
+                const ocupantes = avatares.filter(a => a.oficina_id === oficina.id);
+                return (
+                  <div key={oficina.id} className="relative rounded-xl overflow-hidden border border-gray-100"
+                    style={{ background: oficina.color_hex ?? '#f9fafb', height: `${oficina.alto * ESCALA}px`, width: `${oficina.ancho * ESCALA}px` }}
+                  >
+                    <span className="absolute top-1.5 left-2 text-xs font-semibold text-gray-500 opacity-70 select-none">
+                      {oficina.nombre}
+                    </span>
+                    {ocupantes.map(av => {
+                      const x = (av.posicion_actual_x ?? 100) * ESCALA;
+                      const y = (av.posicion_actual_y ?? 60) * ESCALA;
+                      const emoji = av.agente_nombre ? EMOJI[av.agente_nombre] ?? '🤖' : '👤';
+                      const animClass = ANIM_CLASS[av.estado_animacion] ?? '';
+                      const animLabel = ANIM_LABEL[av.estado_animacion] ?? '';
+                      return (
+                        <div
+                          key={av.id}
+                          className="absolute flex flex-col items-center gap-0.5 transition-all duration-700"
+                          style={{ left: `${x}px`, top: `${y}px`, transform: 'translate(-50%,-50%)' }}
+                          title={`${av.nombre_mostrar} — ${av.estado_animacion}`}
+                        >
+                          <div className={`text-xl leading-none ${animClass}`}>{emoji}</div>
+                          <div className="flex items-center gap-0.5">
+                            <span className="text-[9px] font-medium text-gray-600 bg-white/80 px-1 rounded-full leading-tight max-w-[64px] truncate">
+                              {av.nombre_mostrar.replace('dev-', '')}
+                            </span>
+                            {animLabel && <span className="text-[9px]">{animLabel}</span>}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-0.5">
-                          <span className="text-[9px] font-medium text-gray-600 bg-white/80 px-1 rounded-full leading-tight max-w-[64px] truncate">
-                            {av.nombre_mostrar.replace('dev-', '')}
-                          </span>
-                          {animLabel && <span className="text-[9px]">{animLabel}</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-          {/* Avatares sin oficina (pm-global, stakeholders) */}
+          {/* Avatares sin oficina */}
           {(() => {
             const sinOficina = avatares.filter(a => !a.oficina_id);
             if (!sinOficina.length) return null;
@@ -155,9 +183,7 @@ export default function SimsCanvas({ oficinasIniciales, avatoresIniciales, bitac
         </div>
         <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
           {bitacora.length === 0 && (
-            <div className="text-center py-8 text-sm text-gray-400">
-              Sin actividad registrada aún
-            </div>
+            <div className="text-center py-8 text-sm text-gray-400">Sin actividad registrada aún</div>
           )}
           {bitacora.map(b => {
             const emoji = EMOJI[b.agente] ?? '🤖';

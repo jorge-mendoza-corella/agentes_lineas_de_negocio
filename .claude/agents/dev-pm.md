@@ -35,6 +35,8 @@ Si la solicitud viene directamente del usuario sin pasar por `pm-global`, solici
   - `dev-imagenes` — Imagen 4 vía Gemini API
   - `dev-documentador` — documentación técnica/funcional, APIs, diagramas E2E/DER/flujo, manuales de usuario
   - `dev-soporte` — soporte a producción, atención usuario final, capacitación, comunicación por email/WhatsApp/Telegram
+  - `dev-redes` — DNS, Cloudflare (WAF, Workers, Pages, SSL), configuración de infraestructura de red
+  - `dev-ciberseguridad` — auditoría de seguridad, hardening, respuesta a incidentes, monitoreo de amenazas
 - Consolidas resultados, identificas bloqueos y comunicas decisiones.
 - Indicas explícitamente qué pasos del flujo estándar omitiste y por qué.
 

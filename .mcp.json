@@ -7,6 +7,13 @@
         "N8N_API_URL": "",
         "N8N_API_KEY": ""
       }
+    },
+    "cloudflare": {
+      "command": "npx",
+      "args": ["-y", "@cloudflare/mcp-server-cloudflare"],
+      "env": {
+        "CLOUDFLARE_API_TOKEN": ""
+      }
     }
   }
 }

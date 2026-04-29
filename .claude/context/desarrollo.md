@@ -22,6 +22,7 @@
 | Generación de imágenes | Gemini API (Imagen 4) |
 | Videojuegos | GameMaker Studio 2 + OpenClaw MCP + GML |
 | Descarga de medios | yt-dlp + ffmpeg |
+| DNS / Red | Cloudflare (WAF, Workers, Pages, DNS, SSL) |
 
 ## Roles del área
 
@@ -39,18 +40,24 @@
 | `dev-presentaciones` | Google Slides / Marp |
 | `dev-videojuegos` | GameMaker Studio 2 + GML |
 | `dev-imagenes` | Imagen 4 vía Gemini API |
+| `dev-documentador` | Docs técnica/funcional, OpenAPI, DER, manuales de usuario |
+| `dev-soporte` | Soporte a producción, usuarios finales, email/WhatsApp/Telegram |
+| `dev-redes` | DNS, Cloudflare (WAF, Workers, Pages, SSL/TLS) |
+| `dev-ciberseguridad` | Auditoría de seguridad, hardening, incidentes, amenazas |
 
 ## Flujo de trabajo estándar
 
 1. `dev-analista` → requerimientos
 2. `dev-diseno` → flujo/UX
 3. `dev-bd` → esquema con diagrama ER
-4. `dev-seguridad` → revisión previa
+4. `dev-ciberseguridad` → revisión de seguridad del diseño
 5. `dev-backend` → APIs y lógica
 6. `dev-frontend` → UI
 7. `dev-testing` → pruebas
-8. `dev-devops` → pipeline y deploy
-9. `dev-pm` → reporte al usuario
+8. `dev-redes` → configuración DNS/Cloudflare si aplica
+9. `dev-devops` → pipeline y deploy
+10. `dev-documentador` → documentación de la entrega
+11. `dev-pm` → reporte al usuario
 
 Para solicitudes pequeñas el PM puede saltar pasos, pero debe declarar cuáles y por qué.
 

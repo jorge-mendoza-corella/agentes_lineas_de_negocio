@@ -8,6 +8,7 @@ interface MensajeUI {
   rol: 'usuario' | 'agente';
   contenido: string;
   pendiente?: boolean;
+  esAudio?: boolean;
 }
 
 interface ToolEvent {
@@ -28,6 +29,19 @@ const TOOL_META: Record<string, { emoji: string; label: string }> = {
   actualizar_avatar_estado:  { emoji: '🎭', label: 'Animando agente' },
   consultar_proyectos:       { emoji: '🗂️', label: 'Consultando proyectos' },
 };
+
+function fmtTime(s: number) {
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 // Obtiene la mejor voz Google en español disponible
 function getGoogleVoice(): SpeechSynthesisVoice | null {
@@ -81,6 +95,11 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
 
   useEffect(() => {
     const supported = typeof window !== 'undefined' &&
@@ -94,6 +113,12 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
 
   // Limpia el TTS al desmontar
   useEffect(() => () => { window.speechSynthesis?.cancel(); }, []);
+
+  // Limpia MediaRecorder y timer al desmontar
+  useEffect(() => () => {
+    mediaRecorderRef.current?.stream.getTracks().forEach(t => t.stop());
+    if (timerRef.current) clearInterval(timerRef.current);
+  }, []);
 
   const toggleMic = useCallback(() => {
     if (isListening) {
@@ -143,6 +168,127 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
       window.speechSynthesis.onvoiceschanged = trySpeak;
     } else {
       trySpeak();
+    }
+  }
+
+  async function iniciarGrabacion() {
+    if (isRecording || isStreaming) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mr.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const mimeType = mr.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        await enviarAudio(blob, mimeType);
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setIsRecording(true);
+      setRecordingTime(0);
+      timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+    } catch {
+      alert('No se pudo acceder al micrófono.');
+    }
+  }
+
+  function detenerYEnviarAudio() {
+    if (!isRecording || !mediaRecorderRef.current) return;
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    mediaRecorderRef.current.stop();
+    setIsRecording(false);
+    setRecordingTime(0);
+  }
+
+  async function enviarAudio(blob: Blob, mimeType: string) {
+    if (isStreaming) return;
+    setIsStreaming(true);
+    setToolEvents([]);
+    stopSpeaking();
+    setSpeakingId(null);
+
+    const idUsuario = crypto.randomUUID();
+    const idAgente = crypto.randomUUID();
+
+    setMensajes(prev => [
+      ...prev,
+      { id: idUsuario, rol: 'usuario', contenido: '🎤 Transcribiendo...', esAudio: true },
+      { id: idAgente, rol: 'agente', contenido: '', pendiente: true },
+    ]);
+
+    try {
+      const base64 = await blobToBase64(blob);
+      const res = await fetch('/api/pm-global', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio_base64: base64, audio_mime: mimeType, conversacion_id: conversacionId ?? undefined }),
+      });
+
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let nuevaConvId: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const ev = JSON.parse(line);
+            if (ev.type === 'init') { nuevaConvId = ev.conversacion_id; setConversacionId(ev.conversacion_id); }
+            if (ev.type === 'transcript') {
+              setMensajes(prev => prev.map(m =>
+                m.id === idUsuario ? { ...m, contenido: `🎤 ${ev.texto}` } : m
+              ));
+            }
+            if (ev.type === 'text') {
+              setMensajes(prev => prev.map(m =>
+                m.id === idAgente ? { ...m, contenido: m.contenido + ev.delta } : m
+              ));
+            }
+            if (ev.type === 'tool_start') {
+              const toolId = crypto.randomUUID();
+              setToolEvents(prev => [...prev, { id: toolId, tool: ev.tool, estado: 'running' }]);
+            }
+            if (ev.type === 'tool_end') {
+              setToolEvents(prev => prev.map(t =>
+                t.tool === ev.tool && t.estado === 'running'
+                  ? { ...t, estado: ev.result?.error ? 'error' : 'done', result: ev.result }
+                  : t
+              ));
+            }
+            if (ev.type === 'error') {
+              setMensajes(prev => prev.map(m =>
+                m.id === idAgente ? { ...m, contenido: `⚠️ ${ev.message}`, pendiente: false } : m
+              ));
+            }
+            if (ev.type === 'done' && nuevaConvId && !conversacionId) {
+              router.replace(`/superadmin/solicitar?conversacion=${nuevaConvId}`);
+              router.refresh();
+            }
+          } catch { /* línea malformada */ }
+        }
+      }
+    } catch {
+      setMensajes(prev => prev.map(m =>
+        m.id === idAgente
+          ? { ...m, contenido: '⚠️ Error de conexión con el agente.', pendiente: false }
+          : m
+      ));
+    } finally {
+      setIsStreaming(false);
+      setMensajes(prev => prev.map(m =>
+        m.id === idAgente ? { ...m, pendiente: false } : m
+      ));
+      textareaRef.current?.focus();
     }
   }
 
@@ -251,12 +397,20 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
           <p className="text-sm font-semibold text-gray-900">PM Global</p>
           <p className="text-xs text-gray-500">Project Manager del Área de Sistemas</p>
         </div>
-        {isStreaming && (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-green-600">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
-            Procesando...
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-3">
+          {isRecording && (
+            <span className="flex items-center gap-1.5 text-xs text-red-600 font-medium">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block" />
+              Grabando {fmtTime(recordingTime)}
+            </span>
+          )}
+          {isStreaming && (
+            <span className="flex items-center gap-1.5 text-xs text-green-600">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
+              Procesando...
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Tool events feed */}
@@ -398,6 +552,29 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
                 )}
               </button>
             )}
+            {/* Botón grabar y enviar audio */}
+            <button
+              onClick={isRecording ? detenerYEnviarAudio : iniciarGrabacion}
+              disabled={isStreaming}
+              title={isRecording ? 'Detener y enviar audio' : 'Grabar y enviar audio (Gemini)'}
+              className={`px-3 py-2.5 rounded-xl text-sm font-medium transition-colors shrink-0 ${
+                isRecording
+                  ? 'bg-red-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed'
+              }`}
+            >
+              {isRecording ? (
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <rect x="5" y="5" width="10" height="10" rx="1" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z"/>
+                  <path d="M17 11a1 1 0 00-2 0 3 3 0 01-6 0 1 1 0 00-2 0 5 5 0 0010 0z"/>
+                  <path d="M11 18.93V21H9a1 1 0 000 2h6a1 1 0 000-2h-2v-2.07A7 7 0 0019 12a1 1 0 00-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7 7 0 006 6.93z"/>
+                </svg>
+              )}
+            </button>
             {/* Botón Enviar */}
             <button
               onClick={enviar}
@@ -414,7 +591,7 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
           </div>
         </div>
         <p className="text-[10px] text-gray-400 mt-1.5 ml-1">
-          Ctrl+Enter para enviar{sttSupported ? ' · Micrófono para dictar' : ''}
+          Ctrl+Enter para enviar{sttSupported ? ' · 🎤 dictar' : ''} · 🎙 grabar y enviar audio vía Gemini
         </p>
       </div>
     </div>

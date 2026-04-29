@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { buildSystemPrompt } from '@/lib/pm/system-prompt';
@@ -16,6 +17,38 @@ function serviceClient() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Transcripción de audio con Google Gemini
+// ---------------------------------------------------------------------------
+// Funciona para cualquier fuente de audio (browser WebM, Telegram OGG, etc.)
+// El audio llega como base64. Gemini lo transcribe en español y devuelve texto.
+//
+// Para integrar desde un bot de Telegram:
+//   1. Recibe el voice message y obtén el file_id
+//   2. Descarga el archivo: GET https://api.telegram.org/file/bot<TOKEN>/<path>
+//   3. Convierte el buffer a base64: buffer.toString('base64')
+//   4. POST /api/pm-global con { audio_base64, audio_mime: 'audio/ogg', conversacion_id }
+// ---------------------------------------------------------------------------
+async function transcribirConGemini(audioBase64: string, mimeType: string): Promise<string> {
+  const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GOOGLE_GEMINI_API_KEY no está configurada');
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+  const cleanMime = mimeType.split(';')[0]; // elimina parámetros como ;codecs=opus
+
+  const result = await model.generateContent([
+    'Transcribe exactamente este mensaje de voz en español. Responde únicamente con la transcripción, sin texto adicional ni explicaciones:',
+    { inlineData: { data: audioBase64, mimeType: cleanMime } },
+  ]);
+
+  return result.response.text().trim();
+}
+
+// ---------------------------------------------------------------------------
+// Tools de Claude
+// ---------------------------------------------------------------------------
 const TOOLS: Anthropic.Tool[] = [
   {
     name: 'log_bitacora',
@@ -58,8 +91,8 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        agente_nombre:     { type: 'string', description: 'Ej: pm-global, dev-backend' },
-        estado_animacion:  { type: 'string', enum: ['idle','caminando','trabajando','hablando','celebrando'] },
+        agente_nombre:    { type: 'string', description: 'Ej: pm-global, dev-backend' },
+        estado_animacion: { type: 'string', enum: ['idle','caminando','trabajando','hablando','celebrando'] },
       },
       required: ['agente_nombre', 'estado_animacion'],
     },
@@ -86,9 +119,7 @@ async function ejecutarTool(
     switch (nombre) {
       case 'log_bitacora': {
         const { agente, accion, proyecto_id } = input as { agente: string; accion: string; proyecto_id?: string };
-        const { error } = await db.from('bitacora_actividad').insert({
-          agente, accion, proyecto_id: proyecto_id ?? null,
-        });
+        const { error } = await db.from('bitacora_actividad').insert({ agente, accion, proyecto_id: proyecto_id ?? null });
         return error ? JSON.stringify({ error: error.message }) : JSON.stringify({ ok: true });
       }
       case 'crear_tarea': {
@@ -96,16 +127,13 @@ async function ejecutarTool(
           requerimiento_id: string; agente_asignado: string; descripcion: string; rama?: string;
         };
         const { data, error } = await db.from('tareas').insert({
-          requerimiento_id, agente_asignado, descripcion,
-          rama: rama ?? null, estado: 'pendiente',
+          requerimiento_id, agente_asignado, descripcion, rama: rama ?? null, estado: 'pendiente',
         }).select('id').single();
         return error ? JSON.stringify({ error: error.message }) : JSON.stringify({ ok: true, id: data?.id });
       }
       case 'actualizar_avatar_estado': {
         const { agente_nombre, estado_animacion } = input as { agente_nombre: string; estado_animacion: string };
-        const { error } = await db.from('avatares')
-          .update({ estado_animacion })
-          .eq('agente_nombre', agente_nombre);
+        const { error } = await db.from('avatares').update({ estado_animacion }).eq('agente_nombre', agente_nombre);
         return error ? JSON.stringify({ error: error.message }) : JSON.stringify({ ok: true });
       }
       case 'consultar_proyectos': {
@@ -123,8 +151,10 @@ async function ejecutarTool(
   }
 }
 
+// ---------------------------------------------------------------------------
+// POST handler
+// ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
-  // Auth
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return new Response('Unauthorized', { status: 401 });
@@ -134,30 +164,54 @@ export async function POST(req: NextRequest) {
     return new Response('Forbidden', { status: 403 });
   }
 
-  let body: { mensaje: string; conversacion_id?: string };
+  let body: {
+    mensaje?: string;
+    conversacion_id?: string;
+    // Campos para audio: el cliente envía el audio como base64
+    audio_base64?: string;
+    audio_mime?: string;   // ej: 'audio/webm', 'audio/ogg', 'audio/mp4'
+  };
   try { body = await req.json(); } catch { return new Response('Bad Request', { status: 400 }); }
-  if (!body.mensaje?.trim()) return new Response('Mensaje requerido', { status: 400 });
+
+  const tieneAudio = !!(body.audio_base64 && body.audio_mime);
+  if (!tieneAudio && !body.mensaje?.trim()) {
+    return new Response('Se requiere mensaje o audio', { status: 400 });
+  }
 
   const db = serviceClient();
+
+  // Transcribir audio si aplica (Gemini → texto)
+  let mensajeTexto = body.mensaje?.trim() ?? '';
+  if (tieneAudio) {
+    try {
+      mensajeTexto = await transcribirConGemini(body.audio_base64!, body.audio_mime!);
+    } catch (e) {
+      return new Response(`Error transcribiendo audio: ${e instanceof Error ? e.message : e}`, { status: 500 });
+    }
+    if (!mensajeTexto) return new Response('No se pudo transcribir el audio', { status: 400 });
+  }
 
   // Crear o retomar conversación
   let convId = body.conversacion_id ?? null;
   if (!convId) {
     const { data } = await db.from('conversaciones_pm').insert({
       usuario_id: user.id,
-      titulo: body.mensaje.slice(0, 80),
+      titulo: mensajeTexto.slice(0, 80),
     }).select('id').single();
     convId = data?.id ?? null;
   }
   if (!convId) return new Response('Error creando conversación', { status: 500 });
   const conversacionId = convId;
 
-  // Guardar mensaje del usuario
+  // Guardar mensaje del usuario (siempre en texto, con flag de origen si es audio)
   await db.from('mensajes_pm').insert({
     conversacion_id: conversacionId,
     rol: 'usuario',
-    contenido: body.mensaje,
-    metadata: { usuario_nombre: perfil.nombre },
+    contenido: mensajeTexto,
+    metadata: {
+      usuario_nombre: perfil.nombre,
+      ...(tieneAudio ? { origen: 'audio', audio_mime: body.audio_mime } : {}),
+    },
   });
 
   // Cargar historial
@@ -184,6 +238,12 @@ export async function POST(req: NextRequest) {
 
       try {
         send({ type: 'init', conversacion_id: conversacionId });
+
+        // Si el mensaje vino de audio, envía la transcripción al cliente
+        // para que actualice la burbuja del usuario con el texto real
+        if (tieneAudio) {
+          send({ type: 'transcript', texto: mensajeTexto });
+        }
 
         let textoFinal = '';
         const toolsEjecutados: Array<{ tool: string; input: unknown; result: string }> = [];
@@ -243,7 +303,6 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Guardar respuesta del agente
         const { data: msg } = await db.from('mensajes_pm').insert({
           conversacion_id: conversacionId,
           rol: 'agente',
@@ -251,7 +310,6 @@ export async function POST(req: NextRequest) {
           metadata: { tool_calls: toolsEjecutados, modelo: 'claude-sonnet-4-6' },
         }).select('id').single();
 
-        // Actualizar updated_at de la conversación
         await db.from('conversaciones_pm').update({ updated_at: new Date().toISOString() }).eq('id', conversacionId);
 
         send({ type: 'done', conversacion_id: conversacionId, mensaje_id: msg?.id });

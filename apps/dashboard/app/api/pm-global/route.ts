@@ -155,6 +155,20 @@ async function ejecutarTool(
 // POST handler
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  // Validar variables de entorno requeridas antes de cualquier otra cosa
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return new Response(
+      JSON.stringify({ type: 'error', message: 'SUPABASE_SERVICE_ROLE_KEY no está configurada en .env.local' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return new Response(
+      JSON.stringify({ type: 'error', message: 'ANTHROPIC_API_KEY no está configurada en .env.local' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return new Response('Unauthorized', { status: 401 });
@@ -167,9 +181,8 @@ export async function POST(req: NextRequest) {
   let body: {
     mensaje?: string;
     conversacion_id?: string;
-    // Campos para audio: el cliente envía el audio como base64
     audio_base64?: string;
-    audio_mime?: string;   // ej: 'audio/webm', 'audio/ogg', 'audio/mp4'
+    audio_mime?: string;
   };
   try { body = await req.json(); } catch { return new Response('Bad Request', { status: 400 }); }
 

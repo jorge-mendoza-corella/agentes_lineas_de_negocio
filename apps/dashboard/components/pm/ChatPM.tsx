@@ -30,6 +30,16 @@ const TOOL_META: Record<string, { emoji: string; label: string }> = {
   consultar_proyectos:       { emoji: '🗂️', label: 'Consultando proyectos' },
 };
 
+async function readHttpError(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    const json = JSON.parse(text);
+    return json.message ?? text;
+  } catch {
+    return `Error HTTP ${res.status}`;
+  }
+}
+
 function fmtTime(s: number) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
@@ -226,7 +236,8 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
         body: JSON.stringify({ audio_base64: base64, audio_mime: mimeType, conversacion_id: conversacionId ?? undefined }),
       });
 
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readHttpError(res));
+      if (!res.body) throw new Error(`Sin cuerpo en respuesta HTTP ${res.status}`);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -317,7 +328,8 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
         body: JSON.stringify({ mensaje: texto, conversacion_id: conversacionId ?? undefined }),
       });
 
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readHttpError(res));
+      if (!res.body) throw new Error(`Sin cuerpo en respuesta HTTP ${res.status}`);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -552,27 +564,44 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
                 )}
               </button>
             )}
-            {/* Botón grabar y enviar audio */}
+            {/* Botón grabar y transcribir con Gemini */}
             <button
               onClick={isRecording ? detenerYEnviarAudio : iniciarGrabacion}
               disabled={isStreaming}
-              title={isRecording ? 'Detener y enviar audio' : 'Grabar y enviar audio (Gemini)'}
-              className={`px-3 py-2.5 rounded-xl text-sm font-medium transition-colors shrink-0 ${
+              title={isRecording ? 'Detener y enviar al agente' : 'Grabar mensaje de voz · se transcribe con Gemini'}
+              className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-xl text-xs font-medium transition-all shrink-0 ${
                 isRecording
-                  ? 'bg-red-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed'
+                  ? 'bg-red-500 text-white shadow-lg shadow-red-200'
+                  : 'bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 disabled:opacity-40 disabled:cursor-not-allowed'
               }`}
             >
               {isRecording ? (
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <rect x="5" y="5" width="10" height="10" rx="1" />
-                </svg>
+                <>
+                  {/* Onda pulsante mientras graba */}
+                  <span className="flex items-end gap-0.5 h-4">
+                    {[...Array(4)].map((_, i) => (
+                      <span
+                        key={i}
+                        className="w-0.5 bg-white rounded-full animate-bounce"
+                        style={{ height: `${[60, 100, 70, 85][i]}%`, animationDelay: `${i * 80}ms` }}
+                      />
+                    ))}
+                  </span>
+                  <span className="text-[9px] leading-none">Detener</span>
+                </>
               ) : (
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z"/>
-                  <path d="M17 11a1 1 0 00-2 0 3 3 0 01-6 0 1 1 0 00-2 0 5 5 0 0010 0z"/>
-                  <path d="M11 18.93V21H9a1 1 0 000 2h6a1 1 0 000-2h-2v-2.07A7 7 0 0019 12a1 1 0 00-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7 7 0 006 6.93z"/>
-                </svg>
+                <>
+                  {/* Micrófono con ondas */}
+                  <span className="relative flex items-center justify-center">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4z"/>
+                      <path d="M19 11a1 1 0 00-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7 7 0 006 6.93V20H9a1 1 0 000 2h6a1 1 0 000-2h-2v-2.07A7 7 0 0019 11z"/>
+                    </svg>
+                    {/* Partícula "AI" */}
+                    <span className="absolute -top-1 -right-1.5 text-[8px] font-bold bg-violet-600 text-white rounded px-0.5 leading-tight">AI</span>
+                  </span>
+                  <span className="text-[9px] leading-none">Grabar</span>
+                </>
               )}
             </button>
             {/* Botón Enviar */}
@@ -591,7 +620,7 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
           </div>
         </div>
         <p className="text-[10px] text-gray-400 mt-1.5 ml-1">
-          Ctrl+Enter para enviar{sttSupported ? ' · 🎤 dictar' : ''} · 🎙 grabar y enviar audio vía Gemini
+          Ctrl+Enter para enviar{sttSupported ? ' · 🎤 dictar texto' : ''} · <span className="text-violet-500">■ Grabar</span> transcribe tu voz con Gemini
         </p>
       </div>
     </div>

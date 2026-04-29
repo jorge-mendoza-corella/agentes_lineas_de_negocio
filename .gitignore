@@ -2,7 +2,12 @@
 .env
 .env.local
 .env.*.local
-.claude/*
+# Configuración local de Claude Code (no compartir settings personales)
+.claude/settings.local.json
+.claude/settings.json
+.claude/projects/
+.claude/todos/
+# Los agents/, skills/ y context/ SÍ se versiona (son config del proyecto)
 
 # Dependencias
 node_modules/

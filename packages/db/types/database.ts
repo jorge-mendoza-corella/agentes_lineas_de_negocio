@@ -237,6 +237,73 @@ export type Database = {
           },
         ]
       }
+      conversaciones_pm: {
+        Row: {
+          created_at: string
+          id: string
+          titulo: string | null
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          titulo?: string | null
+          updated_at?: string
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          titulo?: string | null
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversaciones_pm_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mensajes_pm: {
+        Row: {
+          contenido: string
+          conversacion_id: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          rol: string
+        }
+        Insert: {
+          contenido: string
+          conversacion_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          rol: string
+        }
+        Update: {
+          contenido?: string
+          conversacion_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          rol?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mensajes_pm_conversacion_id_fkey"
+            columns: ["conversacion_id"]
+            isOneToOne: false
+            referencedRelation: "conversaciones_pm"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresa_servicios: {
         Row: {
           activo: boolean

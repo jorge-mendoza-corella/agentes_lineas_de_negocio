@@ -22,7 +22,7 @@ interface Props {
   conversacionIdInicial: string | null;
   mensajesIniciales: Array<{ id: string; rol: string; contenido: string; created_at: string }>;
   empresas: Array<{ id: string; nombre: string }>;
-  proyectos: Array<{ id: string; nombre: string }>;
+  proyectos: Array<{ id: string; nombre: string; empresa_id: string | null }>;
   empresaIdInicial?: string | null;
   proyectoIdInicial?: string | null;
 }
@@ -562,7 +562,7 @@ export default function ChatPM({
             {empresas.length > 0 && (
               <select
                 value={empresaId ?? ''}
-                onChange={e => setEmpresaId(e.target.value || null)}
+                onChange={e => { setEmpresaId(e.target.value || null); setProyectoId(null); }}
                 className="flex-1 text-xs rounded-lg border border-gray-200 px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">🏢 Empresa (opcional)</option>
@@ -578,9 +578,11 @@ export default function ChatPM({
                 className="flex-1 text-xs rounded-lg border border-gray-200 px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">📁 Proyecto (opcional)</option>
-                {proyectos.map(p => (
-                  <option key={p.id} value={p.id}>{p.nombre}</option>
-                ))}
+                {proyectos
+                  .filter(p => !empresaId || !p.empresa_id || p.empresa_id === empresaId)
+                  .map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
               </select>
             )}
           </div>

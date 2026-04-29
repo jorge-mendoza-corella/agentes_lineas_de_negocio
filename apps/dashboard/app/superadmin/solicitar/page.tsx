@@ -8,7 +8,7 @@ interface Props {
 
 type ConvRow = { id: string; titulo: string | null; updated_at: string; empresa_id: string | null };
 type EmpresaRow = { id: string; nombre: string };
-type ProyectoRow = { id: string; nombre: string };
+type ProyectoRow = { id: string; nombre: string; empresa_id: string | null };
 type MensajeRow = { id: string; rol: string; contenido: string; created_at: string };
 type ConvDetalle = { empresa_id: string | null; proyecto_id: string | null };
 
@@ -34,7 +34,7 @@ export default async function SolicitarPage({ searchParams }: Props) {
       .order('nombre'),
     supabase
       .from('proyectos')
-      .select('id, nombre')
+      .select('id, nombre, empresa_id')
       .order('nombre'),
   ]);
 

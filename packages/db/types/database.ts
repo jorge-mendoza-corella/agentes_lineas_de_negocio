@@ -763,6 +763,7 @@ export type Database = {
           area_negocio_id: string
           creado_en: string
           descripcion: string | null
+          empresa_id: string | null
           estado: string
           id: string
           nombre: string
@@ -775,6 +776,7 @@ export type Database = {
           area_negocio_id: string
           creado_en?: string
           descripcion?: string | null
+          empresa_id?: string | null
           estado?: string
           id?: string
           nombre: string
@@ -787,6 +789,7 @@ export type Database = {
           area_negocio_id?: string
           creado_en?: string
           descripcion?: string | null
+          empresa_id?: string | null
           estado?: string
           id?: string
           nombre?: string
@@ -800,6 +803,13 @@ export type Database = {
             columns: ["area_negocio_id"]
             isOneToOne: false
             referencedRelation: "areas_negocio"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proyectos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
           {

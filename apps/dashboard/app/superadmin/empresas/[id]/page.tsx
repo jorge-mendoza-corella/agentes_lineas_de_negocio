@@ -24,7 +24,7 @@ export default async function EmpresaDetallePage({ params }: Props) {
     supabase.from('empresas').select('*').eq('id', id).single(),
     supabase.from('empresa_servicios').select('*').eq('empresa_id', id),
     supabase.from('perfiles').select('*, stakeholder_areas(area)').eq('empresa_id', id).order('rol'),
-    supabase.from('servicios').select('*, servicio_agentes(agente_nombre)').order('nombre'),
+    supabase.from('servicios').select('*, servicio_agentes(agente_nombre, tarifa_hora)').order('nombre'),
     supabase.from('empresa_contratos').select('*').eq('empresa_id', id),
     supabase.from('tarifas_agentes').select('agente_nombre, display_name, tarifa_hora').order('area'),
     supabase.from('empresa_agente_tarifas').select('*').eq('empresa_id', id),
@@ -38,7 +38,10 @@ export default async function EmpresaDetallePage({ params }: Props) {
     nombre: s.nombre,
     icono: s.icono,
     descripcion: s.descripcion,
-    agentes: (s.servicio_agentes ?? []).map((a: { agente_nombre: string }) => a.agente_nombre),
+    agentes: (s.servicio_agentes ?? []).map((a: { agente_nombre: string; tarifa_hora: number | null }) => ({
+      agente_nombre: a.agente_nombre,
+      tarifa_hora: a.tarifa_hora,
+    })),
   }));
 
   return (

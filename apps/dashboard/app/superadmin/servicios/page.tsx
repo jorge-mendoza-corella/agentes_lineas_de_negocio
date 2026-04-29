@@ -7,7 +7,7 @@ export default async function ServiciosPage() {
   const [{ data: servicios }, { data: tarifas }] = await Promise.all([
     supabase
       .from('servicios')
-      .select('*, servicio_agentes(agente_nombre)')
+      .select('*, servicio_agentes(agente_nombre, tarifa_hora)')
       .order('nombre'),
     supabase
       .from('tarifas_agentes')
@@ -20,13 +20,18 @@ export default async function ServiciosPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Catálogo de servicios</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Define qué agentes intervienen en cada servicio. Al contratar un servicio, estos agentes se precargan en las cotizaciones.
+          Define qué agentes intervienen en cada servicio y su precio base. Al contratar un servicio, estos agentes se precargan en las cotizaciones.
         </p>
       </div>
       <CatalogoServicios
         servicios={(servicios ?? []).map(s => ({
           ...s,
-          agentes: (s.servicio_agentes ?? []).map((a: { agente_nombre: string }) => a.agente_nombre),
+          agentes: (s.servicio_agentes ?? []).map(
+            (a: { agente_nombre: string; tarifa_hora: number | null }) => ({
+              agente_nombre: a.agente_nombre,
+              tarifa_hora: a.tarifa_hora,
+            })
+          ),
         }))}
         tarifas={tarifas ?? []}
       />

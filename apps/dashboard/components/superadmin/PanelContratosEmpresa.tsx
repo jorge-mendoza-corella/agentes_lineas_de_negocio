@@ -4,12 +4,17 @@ import { useState, useTransition } from 'react';
 import { AGENTES_META, agenteLabel } from '@/lib/agentes-meta';
 import { toggleEmpresaContrato, upsertEmpresaTarifa, deleteEmpresaTarifa } from '@/lib/actions/servicios';
 
+interface AgenteServicio {
+  agente_nombre: string;
+  tarifa_hora: number | null; // null = heredar global
+}
+
 interface Servicio {
   id: string;
   nombre: string;
   icono: string | null;
   descripcion: string | null;
-  agentes: string[];
+  agentes: AgenteServicio[];
 }
 
 interface Contrato {
@@ -62,8 +67,9 @@ export default function PanelContratosEmpresa({
   const tarifaEmpresaMap = Object.fromEntries(tarifasEmpresa.map(t => [t.agente_nombre, t.tarifa_hora]));
   const contratosMap = Object.fromEntries(contratos.map(c => [c.servicio_id, c]));
 
-  function tarifaEfectiva(agente: string): number {
-    return tarifaEmpresaMap[agente] ?? tarifaGlobalMap[agente] ?? 0;
+  // Jerarquía: empresa > servicio > global
+  function tarifaEfectiva(agente: string, tarifaServicio?: number | null): number {
+    return tarifaEmpresaMap[agente] ?? tarifaServicio ?? tarifaGlobalMap[agente] ?? 0;
   }
 
   function toggleContrato(servicio_id: string, activo: boolean) {
@@ -108,8 +114,14 @@ export default function PanelContratosEmpresa({
 
   // Servicios contratados activos
   const serviciosContratados = servicios.filter(s => contratosMap[s.id]?.activo);
-  const allAgentesContratados = [...new Set(serviciosContratados.flatMap(s => s.agentes))];
-  const costoHoraContratado = allAgentesContratados.reduce((sum, a) => sum + tarifaEfectiva(a), 0);
+  const allAgentesContratados = [
+    ...new Map(
+      serviciosContratados.flatMap(s => s.agentes).map(a => [a.agente_nombre, a])
+    ).values(),
+  ];
+  const costoHoraContratado = allAgentesContratados.reduce(
+    (sum, a) => sum + tarifaEfectiva(a.agente_nombre, a.tarifa_hora), 0
+  );
 
   return (
     <div className="space-y-6">
@@ -143,7 +155,7 @@ export default function PanelContratosEmpresa({
             const contrato = contratosMap[s.id];
             const activo = contrato?.activo ?? false;
             const isPendingThis = pendingId === s.id;
-            const costoServicio = s.agentes.reduce((sum, a) => sum + tarifaEfectiva(a), 0);
+            const costoServicio = s.agentes.reduce((sum, a) => sum + tarifaEfectiva(a.agente_nombre, a.tarifa_hora), 0);
 
             return (
               <div key={s.id} className={`px-5 py-4 transition-colors ${activo ? 'bg-blue-50/30' : ''}`}>
@@ -177,16 +189,21 @@ export default function PanelContratosEmpresa({
                 {/* Agentes del servicio con tarifas */}
                 {activo && s.agentes.length > 0 && (
                   <div className="mt-3 ml-16 space-y-1.5">
-                    {s.agentes.map(agente => {
-                      const tieneCustom = !!tarifaEmpresaMap[agente];
-                      const tarifaEf = tarifaEfectiva(agente);
+                    {s.agentes.map(a => {
+                      const agente = a.agente_nombre;
+                      const tieneCustomEmpresa = !!tarifaEmpresaMap[agente];
+                      const tieneCustomServicio = a.tarifa_hora != null;
+                      const tarifaEf = tarifaEfectiva(agente, a.tarifa_hora);
                       const estaEditandoEste = editandoTarifa === agente;
                       return (
                         <div key={agente} className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-gray-600 flex items-center gap-1">
+                          <span className="text-xs text-gray-600 flex items-center gap-1 flex-wrap">
                             {AGENTES_META[agente]?.emoji ?? '🤖'} {agenteLabel(agente)}
-                            {tieneCustom && (
-                              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] ml-1">personalizado</span>
+                            {tieneCustomEmpresa && (
+                              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] ml-1">empresa</span>
+                            )}
+                            {!tieneCustomEmpresa && tieneCustomServicio && (
+                              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] ml-1">servicio</span>
                             )}
                           </span>
                           {estaEditandoEste ? (
@@ -202,8 +219,8 @@ export default function PanelContratosEmpresa({
                               />
                               <span className="text-[10px] text-gray-400">/hr</span>
                               <button onClick={() => guardarTarifa(agente)} disabled={isPending} className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded-md">✓</button>
-                              {tieneCustom && (
-                                <button onClick={() => resetearTarifa(agente)} title="Resetear a global" className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md">↺ Global</button>
+                              {tieneCustomEmpresa && (
+                                <button onClick={() => resetearTarifa(agente)} title="Resetear precio de empresa (vuelve a servicio o global)" className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md">↺</button>
                               )}
                               <button onClick={() => setEditandoTarifa(null)} className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md">✗</button>
                             </div>

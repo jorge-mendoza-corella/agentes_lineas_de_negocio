@@ -846,14 +846,17 @@ export type Database = {
         Row: {
           agente_nombre: string
           servicio_id: string
+          tarifa_hora: number | null
         }
         Insert: {
           agente_nombre: string
           servicio_id: string
+          tarifa_hora?: number | null
         }
         Update: {
           agente_nombre?: string
           servicio_id?: string
+          tarifa_hora?: number | null
         }
         Relationships: [
           {

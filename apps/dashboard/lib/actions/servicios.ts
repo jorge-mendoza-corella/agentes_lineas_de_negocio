@@ -15,12 +15,19 @@ export async function actualizarServicio(
   revalidatePath('/superadmin/servicios');
 }
 
-export async function setAgentesServicio(servicio_id: string, agentes: string[]) {
+export async function setAgentesServicio(
+  servicio_id: string,
+  agentes: { agente_nombre: string; tarifa_hora: number | null }[]
+) {
   const supabase = await createClient();
   await supabase.from('servicio_agentes').delete().eq('servicio_id', servicio_id);
   if (agentes.length > 0) {
     const { error } = await supabase.from('servicio_agentes').insert(
-      agentes.map(a => ({ servicio_id, agente_nombre: a }))
+      agentes.map(a => ({
+        servicio_id,
+        agente_nombre: a.agente_nombre,
+        tarifa_hora: a.tarifa_hora ?? null,
+      }))
     );
     if (error) throw new Error(error.message);
   }
@@ -108,15 +115,16 @@ export async function getAgentesEmpresa(empresa_id: string): Promise<{
   for (const contrato of contratos ?? []) {
     const servicio = contrato.servicios as unknown as {
       nombre: string;
-      servicio_agentes: { agente_nombre: string }[];
+      servicio_agentes: { agente_nombre: string; tarifa_hora: number | null }[];
     } | null;
     if (!servicio) continue;
-    for (const { agente_nombre } of servicio.servicio_agentes ?? []) {
-      if (seen.has(agente_nombre)) continue;
-      seen.add(agente_nombre);
+    for (const sa of servicio.servicio_agentes ?? []) {
+      if (seen.has(sa.agente_nombre)) continue;
+      seen.add(sa.agente_nombre);
+      // Jerarquía: empresa-específico > servicio-específico > global
       result.push({
-        agente_nombre,
-        tarifa_hora: tarifaEmpresaMap[agente_nombre] ?? tarifaGlobalMap[agente_nombre] ?? 0,
+        agente_nombre: sa.agente_nombre,
+        tarifa_hora: tarifaEmpresaMap[sa.agente_nombre] ?? sa.tarifa_hora ?? tarifaGlobalMap[sa.agente_nombre] ?? 0,
         servicio_nombre: servicio.nombre,
       });
     }

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import LogoutButton from './LogoutButton';
 
 interface Props {
   nombre: string;
@@ -34,16 +35,27 @@ export default function NavSuperadmin({ nombre }: Props) {
         >
           <span>👥</span> Stakeholders
         </Link>
+
+        <div className="pt-3 pb-1 px-3">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Proyectos</p>
+        </div>
+        <Link
+          href="/superadmin/proyectos"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+        >
+          <span>📋</span> Proyectos
+        </Link>
+        <Link
+          href="/superadmin/sims"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+        >
+          <span>🏢</span> Vista agentes
+        </Link>
       </nav>
 
-      <form action="/auth/signout" method="post" className="px-3 py-4 border-t border-gray-700">
-        <button
-          type="submit"
-          className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-        >
-          Cerrar sesión
-        </button>
-      </form>
+      <div className="px-3 py-4 border-t border-gray-700">
+        <LogoutButton className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors" />
+      </div>
     </aside>
   );
 }

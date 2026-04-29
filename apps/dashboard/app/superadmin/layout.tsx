@@ -13,7 +13,7 @@ export default async function SuperadminLayout({ children }: { children: React.R
     .eq('id', user.id)
     .single();
 
-  if (perfil?.rol !== 'superadmin') redirect('/aprobaciones');
+  if (perfil?.rol !== 'superadmin' && perfil?.rol !== 'plataforma_admin') redirect('/aprobaciones');
 
   return (
     <div className="min-h-screen flex">

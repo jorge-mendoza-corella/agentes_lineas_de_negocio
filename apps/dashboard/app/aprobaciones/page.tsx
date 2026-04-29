@@ -14,8 +14,8 @@ export default async function AprobacionesPage() {
     .eq('id', user.id)
     .single();
 
-  // Superadmin accede desde su propia ruta
-  if (perfil?.rol === 'superadmin') redirect('/superadmin');
+  // Superadmin y plataforma_admin acceden desde su propia ruta
+  if (perfil?.rol === 'superadmin' || perfil?.rol === 'plataforma_admin') redirect('/superadmin');
 
   const { data: solicitudes } = await supabase
     .from('solicitudes_aprobacion')

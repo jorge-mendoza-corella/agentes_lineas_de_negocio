@@ -7,8 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -51,6 +49,48 @@ export type Database = {
             columns: ["area_negocio_id"]
             isOneToOne: false
             referencedRelation: "areas_negocio"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      aprobaciones: {
+        Row: {
+          comentarios: string | null
+          created_at: string
+          decision: string
+          id: string
+          solicitud_id: string
+          stakeholder_id: string
+        }
+        Insert: {
+          comentarios?: string | null
+          created_at?: string
+          decision: string
+          id?: string
+          solicitud_id: string
+          stakeholder_id: string
+        }
+        Update: {
+          comentarios?: string | null
+          created_at?: string
+          decision?: string
+          id?: string
+          solicitud_id?: string
+          stakeholder_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aprobaciones_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes_aprobacion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "aprobaciones_stakeholder_id_fkey"
+            columns: ["stakeholder_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
             referencedColumns: ["id"]
           },
         ]
@@ -197,6 +237,68 @@ export type Database = {
           },
         ]
       }
+      empresa_servicios: {
+        Row: {
+          activo: boolean
+          created_at: string
+          empresa_id: string
+          id: string
+          servicio: string
+        }
+        Insert: {
+          activo?: boolean
+          created_at?: string
+          empresa_id: string
+          id?: string
+          servicio: string
+        }
+        Update: {
+          activo?: boolean
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          servicio?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empresa_servicios_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empresas: {
+        Row: {
+          activa: boolean
+          created_at: string
+          descripcion: string | null
+          id: string
+          nombre: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          activa?: boolean
+          created_at?: string
+          descripcion?: string | null
+          id?: string
+          nombre: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          activa?: boolean
+          created_at?: string
+          descripcion?: string | null
+          id?: string
+          nombre?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       oficinas: {
         Row: {
           alto: number
@@ -237,6 +339,44 @@ export type Database = {
             columns: ["area_negocio_id"]
             isOneToOne: false
             referencedRelation: "areas_negocio"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      perfiles: {
+        Row: {
+          created_at: string
+          email: string
+          empresa_id: string | null
+          id: string
+          nombre: string
+          rol: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          empresa_id?: string | null
+          id: string
+          nombre: string
+          rol?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          empresa_id?: string | null
+          id?: string
+          nombre?: string
+          rol?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "perfiles_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
         ]
@@ -452,6 +592,89 @@ export type Database = {
           },
         ]
       }
+      solicitudes_aprobacion: {
+        Row: {
+          area: string
+          created_at: string
+          descripcion: string
+          empresa_id: string | null
+          estado: string
+          id: string
+          plan_detallado: Json
+          stakeholder_id: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          area: string
+          created_at?: string
+          descripcion: string
+          empresa_id?: string | null
+          estado?: string
+          id?: string
+          plan_detallado?: Json
+          stakeholder_id: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          area?: string
+          created_at?: string
+          descripcion?: string
+          empresa_id?: string | null
+          estado?: string
+          id?: string
+          plan_detallado?: Json
+          stakeholder_id?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "solicitudes_aprobacion_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "solicitudes_aprobacion_stakeholder_id_fkey"
+            columns: ["stakeholder_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stakeholder_areas: {
+        Row: {
+          area: string
+          created_at: string
+          id: string
+          stakeholder_id: string
+        }
+        Insert: {
+          area: string
+          created_at?: string
+          id?: string
+          stakeholder_id: string
+        }
+        Update: {
+          area?: string
+          created_at?: string
+          id?: string
+          stakeholder_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stakeholder_areas_stakeholder_id_fkey"
+            columns: ["stakeholder_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stakeholders: {
         Row: {
           creado_en: string
@@ -528,7 +751,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      es_plataforma_admin: { Args: never; Returns: boolean }
+      es_superadmin: { Args: never; Returns: boolean }
+      mi_empresa_id: { Args: never; Returns: string }
     }
     Enums: {
       [_ in never]: never
@@ -540,7 +765,6 @@ export type Database = {
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
@@ -620,40 +844,6 @@ export type TablesUpdate<
       }
       ? U
       : never
-    : never
-
-export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
-
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {

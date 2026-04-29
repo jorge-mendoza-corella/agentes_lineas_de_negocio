@@ -13,6 +13,6 @@ export default async function HomePage() {
     .eq('id', user.id)
     .single();
 
-  if (perfil?.rol === 'superadmin') redirect('/superadmin');
+  if (perfil?.rol === 'superadmin' || perfil?.rol === 'plataforma_admin') redirect('/superadmin');
   redirect('/aprobaciones');
 }

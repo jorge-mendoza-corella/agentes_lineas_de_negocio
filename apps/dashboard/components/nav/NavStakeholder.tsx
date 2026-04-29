@@ -1,3 +1,5 @@
+import LogoutButton from './LogoutButton';
+
 interface Props {
   nombre: string;
 }
@@ -12,11 +14,7 @@ export default function NavStakeholder({ nombre }: Props) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-700">{nombre}</span>
-          <form action="/auth/signout" method="post">
-            <button type="submit" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
-              Salir
-            </button>
-          </form>
+          <LogoutButton className="text-xs text-gray-400 hover:text-gray-700 transition-colors" />
         </div>
       </div>
     </header>

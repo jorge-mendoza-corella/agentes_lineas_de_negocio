@@ -7,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -269,37 +271,56 @@ export type Database = {
           },
         ]
       }
-      mensajes_pm: {
+      cotizacion_lineas: {
         Row: {
-          contenido: string
-          conversacion_id: string
+          agente_nombre: string
+          cotizacion_id: string
           created_at: string
+          descripcion: string
+          horas: number
           id: string
-          metadata: Json | null
-          rol: string
+          orden: number
+          precio_hora: number
+          subtotal: number | null
+          tarea_id: string | null
         }
         Insert: {
-          contenido: string
-          conversacion_id: string
+          agente_nombre: string
+          cotizacion_id: string
           created_at?: string
+          descripcion: string
+          horas?: number
           id?: string
-          metadata?: Json | null
-          rol: string
+          orden?: number
+          precio_hora?: number
+          subtotal?: number | null
+          tarea_id?: string | null
         }
         Update: {
-          contenido?: string
-          conversacion_id?: string
+          agente_nombre?: string
+          cotizacion_id?: string
           created_at?: string
+          descripcion?: string
+          horas?: number
           id?: string
-          metadata?: Json | null
-          rol?: string
+          orden?: number
+          precio_hora?: number
+          subtotal?: number | null
+          tarea_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "mensajes_pm_conversacion_id_fkey"
-            columns: ["conversacion_id"]
+            foreignKeyName: "cotizacion_lineas_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
             isOneToOne: false
-            referencedRelation: "conversaciones_pm"
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizacion_lineas_tarea_id_fkey"
+            columns: ["tarea_id"]
+            isOneToOne: false
+            referencedRelation: "tareas"
             referencedColumns: ["id"]
           },
         ]
@@ -374,93 +395,70 @@ export type Database = {
           },
         ]
       }
-      cotizacion_lineas: {
+      empresa_agente_tarifas: {
         Row: {
           agente_nombre: string
-          cotizacion_id: string
-          created_at: string
-          descripcion: string
-          horas: number
-          id: string
-          orden: number
-          precio_hora: number
-          subtotal: number
-          tarea_id: string | null
+          empresa_id: string
+          tarifa_hora: number
         }
         Insert: {
           agente_nombre: string
-          cotizacion_id: string
-          created_at?: string
-          descripcion: string
-          horas?: number
-          id?: string
-          orden?: number
-          precio_hora?: number
-          tarea_id?: string | null
+          empresa_id: string
+          tarifa_hora: number
         }
         Update: {
           agente_nombre?: string
-          cotizacion_id?: string
-          created_at?: string
-          descripcion?: string
-          horas?: number
-          id?: string
-          orden?: number
-          precio_hora?: number
-          tarea_id?: string | null
+          empresa_id?: string
+          tarifa_hora?: number
         }
         Relationships: [
           {
-            foreignKeyName: "cotizacion_lineas_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
+            foreignKeyName: "empresa_agente_tarifas_empresa_id_fkey"
+            columns: ["empresa_id"]
             isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizacion_lineas_tarea_id_fkey"
-            columns: ["tarea_id"]
-            isOneToOne: false
-            referencedRelation: "tareas"
+            referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
         ]
       }
-      tarifas_agentes: {
+      empresa_contratos: {
         Row: {
-          activo: boolean
-          agente_nombre: string
-          actualizado_en: string
-          area: string
-          creado_en: string
-          display_name: string
+          activo: boolean | null
+          creado_en: string | null
+          empresa_id: string
           id: string
-          moneda: string
-          tarifa_hora: number
+          servicio_id: string
         }
         Insert: {
-          activo?: boolean
-          agente_nombre: string
-          actualizado_en?: string
-          area?: string
-          creado_en?: string
-          display_name: string
+          activo?: boolean | null
+          creado_en?: string | null
+          empresa_id: string
           id?: string
-          moneda?: string
-          tarifa_hora?: number
+          servicio_id: string
         }
         Update: {
-          activo?: boolean
-          agente_nombre?: string
-          actualizado_en?: string
-          area?: string
-          creado_en?: string
-          display_name?: string
+          activo?: boolean | null
+          creado_en?: string | null
+          empresa_id?: string
           id?: string
-          moneda?: string
-          tarifa_hora?: number
+          servicio_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "empresa_contratos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empresa_contratos_servicio_id_fkey"
+            columns: ["servicio_id"]
+            isOneToOne: false
+            referencedRelation: "servicios"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       empresa_servicios: {
         Row: {
@@ -521,6 +519,33 @@ export type Database = {
           nombre?: string
           slug?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      mensajes_pm: {
+        Row: {
+          contenido: string
+          conversacion_id: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          rol: string
+        }
+        Insert: {
+          contenido: string
+          conversacion_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          rol: string
+        }
+        Update: {
+          contenido?: string
+          conversacion_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          rol?: string
         }
         Relationships: []
       }
@@ -817,6 +842,56 @@ export type Database = {
           },
         ]
       }
+      servicio_agentes: {
+        Row: {
+          agente_nombre: string
+          servicio_id: string
+        }
+        Insert: {
+          agente_nombre: string
+          servicio_id: string
+        }
+        Update: {
+          agente_nombre?: string
+          servicio_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "servicio_agentes_servicio_id_fkey"
+            columns: ["servicio_id"]
+            isOneToOne: false
+            referencedRelation: "servicios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      servicios: {
+        Row: {
+          activo: boolean | null
+          creado_en: string | null
+          descripcion: string | null
+          icono: string | null
+          id: string
+          nombre: string
+        }
+        Insert: {
+          activo?: boolean | null
+          creado_en?: string | null
+          descripcion?: string | null
+          icono?: string | null
+          id?: string
+          nombre: string
+        }
+        Update: {
+          activo?: boolean | null
+          creado_en?: string | null
+          descripcion?: string | null
+          icono?: string | null
+          id?: string
+          nombre?: string
+        }
+        Relationships: []
+      }
       solicitudes_aprobacion: {
         Row: {
           area: string
@@ -971,6 +1046,42 @@ export type Database = {
           },
         ]
       }
+      tarifas_agentes: {
+        Row: {
+          activo: boolean
+          actualizado_en: string
+          agente_nombre: string
+          area: string
+          creado_en: string
+          display_name: string
+          id: string
+          moneda: string
+          tarifa_hora: number
+        }
+        Insert: {
+          activo?: boolean
+          actualizado_en?: string
+          agente_nombre: string
+          area?: string
+          creado_en?: string
+          display_name: string
+          id?: string
+          moneda?: string
+          tarifa_hora?: number
+        }
+        Update: {
+          activo?: boolean
+          actualizado_en?: string
+          agente_nombre?: string
+          area?: string
+          creado_en?: string
+          display_name?: string
+          id?: string
+          moneda?: string
+          tarifa_hora?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -990,6 +1101,7 @@ export type Database = {
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
@@ -1069,6 +1181,40 @@ export type TablesUpdate<
       }
       ? U
       : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {

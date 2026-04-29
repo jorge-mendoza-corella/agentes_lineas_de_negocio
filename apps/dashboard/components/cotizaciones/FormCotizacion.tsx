@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { crearCotizacion, getAgentesDelProyecto } from '@/lib/actions/cotizaciones';
+import { getAgentesEmpresa } from '@/lib/actions/servicios';
 import { AGENTES_META, agenteLabel } from '@/lib/agentes-meta';
 
 interface Proyecto  { id: string; nombre: string }
@@ -31,6 +32,7 @@ export default function FormCotizacion({ proyectos, empresas, tarifas }: Props) 
 
   const [proyectoId,   setProyectoId]   = useState('');
   const [empresaId,    setEmpresaId]    = useState('');
+  const [importandoEmpresa, setImportandoEmpresa] = useState(false);
   const [notas,        setNotas]        = useState('');
   const [descuento,    setDescuento]    = useState(0);
   const [lineas,       setLineas]       = useState<LineaUI[]>([]);
@@ -64,6 +66,30 @@ export default function FormCotizacion({ proyectos, empresas, tarifas }: Props) 
       }
       return next;
     }));
+  }
+
+  async function importarDesdeEmpresa() {
+    if (!empresaId) return;
+    setImportandoEmpresa(true);
+    try {
+      const agentes = await getAgentesEmpresa(empresaId);
+      if (agentes.length === 0) {
+        alert('La empresa no tiene servicios contratados con agentes configurados.');
+        return;
+      }
+      const nuevas: LineaUI[] = agentes
+        .filter(a => !lineas.some(l => l.agente_nombre === a.agente_nombre))
+        .map(a => ({
+          uid:           uid(),
+          agente_nombre: a.agente_nombre,
+          descripcion:   `Trabajo de ${agenteLabel(a.agente_nombre)} (${a.servicio_nombre})`,
+          horas:         1,
+          precio_hora:   a.tarifa_hora,
+        }));
+      setLineas(prev => [...prev, ...nuevas]);
+    } finally {
+      setImportandoEmpresa(false);
+    }
   }
 
   async function importarDesdeProyecto() {
@@ -155,6 +181,15 @@ export default function FormCotizacion({ proyectos, empresas, tarifas }: Props) 
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-700">Líneas de cotización</h2>
           <div className="flex gap-2">
+            {empresaId && (
+              <button
+                onClick={importarDesdeEmpresa}
+                disabled={importandoEmpresa}
+                className="text-xs px-3 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 transition-colors"
+              >
+                {importandoEmpresa ? 'Importando...' : '🏢 Importar desde servicios contratados'}
+              </button>
+            )}
             {proyectoId && (
               <button
                 onClick={importarDesdeProyecto}
@@ -175,7 +210,7 @@ export default function FormCotizacion({ proyectos, empresas, tarifas }: Props) 
 
         {lineas.length === 0 ? (
           <p className="text-center py-10 text-sm text-gray-400">
-            Agrega líneas manualmente o importa los agentes del proyecto seleccionado.
+            Agrega líneas manualmente, importa desde los servicios contratados de la empresa, o desde los agentes del proyecto.
           </p>
         ) : (
           <table className="w-full text-sm">

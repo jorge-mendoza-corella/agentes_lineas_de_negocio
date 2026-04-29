@@ -67,6 +67,12 @@ export default function NavSuperadmin({ nombre }: Props) {
           <p className="text-xs text-gray-500 uppercase tracking-wider">Facturación</p>
         </div>
         <Link
+          href="/superadmin/servicios"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+        >
+          <span>📦</span> Servicios
+        </Link>
+        <Link
           href="/superadmin/tarifas"
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
         >

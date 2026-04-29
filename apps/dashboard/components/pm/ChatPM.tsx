@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface MensajeUI {
@@ -29,6 +29,39 @@ const TOOL_META: Record<string, { emoji: string; label: string }> = {
   consultar_proyectos:       { emoji: '🗂️', label: 'Consultando proyectos' },
 };
 
+// Obtiene la mejor voz Google en español disponible
+function getGoogleVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  return (
+    voices.find(v => v.name.toLowerCase().includes('google') && v.lang.startsWith('es')) ??
+    voices.find(v => v.lang === 'es-MX') ??
+    voices.find(v => v.lang.startsWith('es')) ??
+    null
+  );
+}
+
+function speak(texto: string) {
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(texto);
+  utterance.lang = 'es-MX';
+  utterance.rate = 1.0;
+  // Las voces pueden no estar listas; reintenta una vez si la lista está vacía
+  const trySpeak = () => {
+    const voice = getGoogleVoice();
+    if (voice) utterance.voice = voice;
+    window.speechSynthesis.speak(utterance);
+  };
+  if (window.speechSynthesis.getVoices().length === 0) {
+    window.speechSynthesis.onvoiceschanged = () => { trySpeak(); };
+  } else {
+    trySpeak();
+  }
+}
+
+function stopSpeaking() {
+  window.speechSynthesis.cancel();
+}
+
 export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Props) {
   const router = useRouter();
   const [conversacionId, setConversacionId] = useState<string | null>(conversacionIdInicial);
@@ -42,12 +75,76 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [sttSupported, setSttSupported] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  useEffect(() => {
+    const supported = typeof window !== 'undefined' &&
+      ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+    setSttSupported(supported);
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [mensajes]);
+
+  // Limpia el TTS al desmontar
+  useEffect(() => () => { window.speechSynthesis?.cancel(); }, []);
+
+  const toggleMic = useCallback(() => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition: typeof SpeechRecognition }).SpeechRecognition ??
+      (window as unknown as { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition;
+    if (!SpeechRec) return;
+
+    const rec = new SpeechRec();
+    rec.lang = 'es-MX';
+    rec.continuous = false;
+    rec.interimResults = false;
+
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      const transcript = e.results[0][0].transcript;
+      setInput(prev => prev ? `${prev} ${transcript}` : transcript);
+    };
+    rec.onend = () => setIsListening(false);
+    rec.onerror = () => setIsListening(false);
+
+    rec.start();
+    recognitionRef.current = rec;
+    setIsListening(true);
+  }, [isListening]);
+
+  function toggleSpeak(id: string, contenido: string) {
+    if (speakingId === id) {
+      stopSpeaking();
+      setSpeakingId(null);
+      return;
+    }
+    setSpeakingId(id);
+    const utterance = new SpeechSynthesisUtterance(contenido);
+    utterance.lang = 'es-MX';
+    const trySpeak = () => {
+      const voice = getGoogleVoice();
+      if (voice) utterance.voice = voice;
+      utterance.onend = () => setSpeakingId(null);
+      utterance.onerror = () => setSpeakingId(null);
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    };
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.onvoiceschanged = trySpeak;
+    } else {
+      trySpeak();
+    }
+  }
 
   async function enviar() {
     const texto = input.trim();
@@ -55,6 +152,8 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
     setInput('');
     setIsStreaming(true);
     setToolEvents([]);
+    stopSpeaking();
+    setSpeakingId(null);
 
     const idUsuario = crypto.randomUUID();
     const idAgente = crypto.randomUUID();
@@ -121,7 +220,7 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
           } catch { /* línea malformada */ }
         }
       }
-    } catch (e) {
+    } catch {
       setMensajes(prev => prev.map(m =>
         m.id === idAgente
           ? { ...m, contenido: '⚠️ Error de conexión con el agente.', pendiente: false }
@@ -194,7 +293,7 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
             <span className="text-5xl mb-4">🎯</span>
             <p className="text-sm font-semibold text-gray-700">¿En qué puedo ayudarte?</p>
             <p className="text-xs text-gray-400 mt-1 max-w-xs">
-              Escribe tu requerimiento y el PM Global lo analizará, delegará tareas y coordinará al equipo.
+              Escribe o dicta tu requerimiento y el PM Global lo analizará, delegará tareas y coordinará al equipo.
             </p>
           </div>
         )}
@@ -204,23 +303,57 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
             {m.rol === 'agente' && (
               <span className="text-xl mr-2 mt-0.5 shrink-0">🎯</span>
             )}
-            <div
-              className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                m.rol === 'usuario'
-                  ? 'bg-blue-600 text-white rounded-tr-sm'
-                  : 'bg-gray-100 text-gray-800 rounded-tl-sm'
-              }`}
-            >
-              <pre className="whitespace-pre-wrap font-sans">{m.contenido}</pre>
-              {m.pendiente && m.contenido === '' && (
-                <span className="inline-flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </span>
-              )}
-              {m.pendiente && m.contenido !== '' && (
-                <span className="inline-block w-2 h-4 bg-gray-400 ml-0.5 animate-pulse rounded-sm align-text-bottom" />
+            <div className="flex flex-col gap-1 max-w-[75%]">
+              <div
+                className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                  m.rol === 'usuario'
+                    ? 'bg-blue-600 text-white rounded-tr-sm'
+                    : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+                }`}
+              >
+                <pre className="whitespace-pre-wrap font-sans">{m.contenido}</pre>
+                {m.pendiente && m.contenido === '' && (
+                  <span className="inline-flex gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </span>
+                )}
+                {m.pendiente && m.contenido !== '' && (
+                  <span className="inline-block w-2 h-4 bg-gray-400 ml-0.5 animate-pulse rounded-sm align-text-bottom" />
+                )}
+              </div>
+
+              {/* Botón TTS en mensajes del agente ya completos */}
+              {m.rol === 'agente' && !m.pendiente && m.contenido && (
+                <button
+                  onClick={() => toggleSpeak(m.id, m.contenido)}
+                  title={speakingId === m.id ? 'Detener audio' : 'Escuchar respuesta'}
+                  className={`self-start flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full transition-colors ${
+                    speakingId === m.id
+                      ? 'bg-blue-100 text-blue-600'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {speakingId === m.id ? (
+                    <>
+                      <span className="flex gap-0.5 items-end h-3">
+                        <span className="w-0.5 bg-blue-500 rounded-full animate-[bounce_0.6s_ease-in-out_infinite]" style={{ height: '40%', animationDelay: '0ms' }} />
+                        <span className="w-0.5 bg-blue-500 rounded-full animate-[bounce_0.6s_ease-in-out_infinite]" style={{ height: '100%', animationDelay: '100ms' }} />
+                        <span className="w-0.5 bg-blue-500 rounded-full animate-[bounce_0.6s_ease-in-out_infinite]" style={{ height: '60%', animationDelay: '200ms' }} />
+                        <span className="w-0.5 bg-blue-500 rounded-full animate-[bounce_0.6s_ease-in-out_infinite]" style={{ height: '80%', animationDelay: '150ms' }} />
+                      </span>
+                      Detener
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
+                      </svg>
+                      Escuchar
+                    </>
+                  )}
+                </button>
               )}
             </div>
           </div>
@@ -237,24 +370,52 @@ export default function ChatPM({ conversacionIdInicial, mensajesIniciales }: Pro
             onChange={e => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             disabled={isStreaming}
-            placeholder="Escribe tu requerimiento... (Ctrl+Enter para enviar)"
+            placeholder="Escribe o dicta tu requerimiento... (Ctrl+Enter para enviar)"
             rows={3}
             className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:bg-gray-50"
           />
-          <button
-            onClick={enviar}
-            disabled={isStreaming || !input.trim()}
-            className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-          >
-            {isStreaming ? (
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
-                Enviando
-              </span>
-            ) : 'Enviar'}
-          </button>
+          <div className="flex flex-col gap-2">
+            {/* Botón STT */}
+            {sttSupported && (
+              <button
+                onClick={toggleMic}
+                disabled={isStreaming}
+                title={isListening ? 'Detener grabación' : 'Dictar mensaje (Google STT)'}
+                className={`px-3 py-2.5 rounded-xl text-sm font-medium transition-colors shrink-0 ${
+                  isListening
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed'
+                }`}
+              >
+                {isListening ? (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <rect x="6" y="6" width="8" height="8" rx="1" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            )}
+            {/* Botón Enviar */}
+            <button
+              onClick={enviar}
+              disabled={isStreaming || !input.trim()}
+              className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+            >
+              {isStreaming ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+                  Enviando
+                </span>
+              ) : 'Enviar'}
+            </button>
+          </div>
         </div>
-        <p className="text-[10px] text-gray-400 mt-1.5 ml-1">Ctrl+Enter para enviar</p>
+        <p className="text-[10px] text-gray-400 mt-1.5 ml-1">
+          Ctrl+Enter para enviar{sttSupported ? ' · Micrófono para dictar' : ''}
+        </p>
       </div>
     </div>
   );

@@ -616,7 +616,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   const [papeles, setPapeles]        = useState<Papel[]>([]);
   const [avatarPending, startAvatar] = useTransition();
   const [dragId, setDragId]          = useState<string | null>(null);
-  const [dragOver, setDragOver]      = useState<'lounge' | 'sala' | null>(null);
+  const [dragOver, setDragOver]      = useState<'lounge' | 'sala' | 'pasillo' | null>(null);
   const [expandedTareaId, setExpandedTareaId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -747,11 +747,28 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
           </div>
 
           {/* ═══ ZONA 2: PASILLO ═══ */}
-          <div className="relative flex-shrink-0 flex flex-col items-center" style={{
-            width:'6%',
-            background:'linear-gradient(180deg, #080c14 0%, #0b1022 100%)',
-            borderRight:'1px solid rgba(99,102,241,0.1)',
-          }}>
+          <div
+            className="relative flex-shrink-0 flex flex-col items-center transition-all"
+            onDragOver={e => { e.preventDefault(); setDragOver('pasillo'); }}
+            onDragLeave={() => setDragOver(null)}
+            onDrop={e => {
+              e.preventDefault();
+              setDragOver(null);
+              const id = e.dataTransfer.getData('agente_id');
+              if (!id) return;
+              if (!atDesk(getEstado(id)) && getEstado(id) !== 'caminando') {
+                // En lounge → reanudar trabajo
+                startAvatar(async () => { await reanudarTrabajo(id); });
+              } else if (atDesk(getEstado(id))) {
+                // En sala → mover a descanso
+                startAvatar(async () => { await moverAvatarADescanso(id); });
+              }
+            }}
+            style={{
+              width:'6%',
+              background:'linear-gradient(180deg, #080c14 0%, #0b1022 100%)',
+              borderRight:`1px solid ${dragOver === 'pasillo' ? 'rgba(99,102,241,0.4)' : 'rgba(99,102,241,0.1)'}`,
+            }}>
             <p className="text-[7px] font-bold uppercase tracking-widest mt-14 rotate-90 whitespace-nowrap"
               style={{ color:'rgba(99,102,241,0.22)' }}>Pasillo</p>
             <div className="absolute top-16 bottom-4 w-px" style={{

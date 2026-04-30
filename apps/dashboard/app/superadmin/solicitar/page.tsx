@@ -6,7 +6,7 @@ interface Props {
   searchParams: Promise<{ conversacion?: string }>;
 }
 
-type ConvRow = { id: string; titulo: string | null; updated_at: string; empresa_id: string | null };
+type ConvRow = { id: string; titulo: string | null; updated_at: string; empresa_id: string | null; proyecto_id: string | null };
 type EmpresaRow = { id: string; nombre: string };
 type ProyectoRow = { id: string; nombre: string; empresa_id: string | null };
 type MensajeRow = { id: string; rol: string; contenido: string; created_at: string };
@@ -23,7 +23,7 @@ export default async function SolicitarPage({ searchParams }: Props) {
   const [convRes, empRes, projRes] = await Promise.all([
     supabase
       .from('conversaciones_pm')
-      .select('id, titulo, updated_at, empresa_id')
+      .select('id, titulo, updated_at, empresa_id, proyecto_id')
       .eq('usuario_id', user.id)
       .order('updated_at', { ascending: false })
       .limit(30),
@@ -79,6 +79,7 @@ export default async function SolicitarPage({ searchParams }: Props) {
           </a>
           {conversaciones.map(conv => {
             const empresaNombre = empresas.find(e => e.id === conv.empresa_id)?.nombre;
+            const proyectoNombre = proyectos.find(p => p.id === conv.proyecto_id)?.nombre;
             return (
               <a
                 key={conv.id}
@@ -92,6 +93,9 @@ export default async function SolicitarPage({ searchParams }: Props) {
                 </p>
                 {empresaNombre && (
                   <p className="text-[10px] text-blue-500 mt-0.5 truncate">🏢 {empresaNombre}</p>
+                )}
+                {proyectoNombre && (
+                  <p className="text-[10px] text-indigo-500 mt-0.5 truncate">📁 {proyectoNombre}</p>
                 )}
                 <p className="text-[10px] text-gray-400 mt-0.5">
                   {new Date(conv.updated_at).toLocaleDateString('es-MX', {

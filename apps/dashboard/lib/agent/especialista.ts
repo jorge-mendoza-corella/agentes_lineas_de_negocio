@@ -2,6 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { Client as SshClient } from 'ssh2';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = any;
@@ -21,8 +24,10 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
 };
 
 // ── Ejecución SSH real ────────────────────────────────────────────────────
+// Usa autenticación por llave privada (SSH_KEY_PATH + SSH_KEY_PASSPHRASE en .env.local).
+// Fallback a contraseña solo si no existe la llave.
 async function ejecutarSSH(
-  host: string, usuario: string, password: string,
+  host: string, usuario: string, credencial: string,
   comando: string, timeoutMs = 240000
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
@@ -37,7 +42,21 @@ async function ejecutarSSH(
 
     conn.on('ready', () => {
       // DEBIAN_FRONTEND=noninteractive evita prompts interactivos en apt
-      const cmdFinal = `DEBIAN_FRONTEND=noninteractive ${comando}`;
+      let cmdFinal = `DEBIAN_FRONTEND=noninteractive ${comando}`;
+
+      // Si el comando usa sudo en shell no interactiva, inyectar contraseña via stdin (-S).
+      // Se eliminan todos los prefijos "sudo" del comando y se ejecuta todo bajo una sola
+      // sesión root con "sudo bash -c". La codificación base64 evita problemas de escaping.
+      const sudoPass = process.env.SSH_SUDO_PASSWORD;
+      if (sudoPass && /\bsudo\b/.test(comando)) {
+        const safePass  = sudoPass.replace(/'/g, "'\\''");
+        // Quitar prefijos sudo del comando (ya correremos todo como root)
+        const cmdAsRoot = `DEBIAN_FRONTEND=noninteractive ${comando.replace(/\bsudo\s+/g, '')}`;
+        // Codificar en base64 para evitar escaping de comillas/caracteres especiales
+        const b64 = Buffer.from(cmdAsRoot).toString('base64');
+        cmdFinal = `echo '${safePass}' | sudo -Sp '' bash -c "$(echo '${b64}' | base64 -d)"`;
+      }
+
       conn.exec(cmdFinal, (err, stream) => {
         if (err) { clearTimeout(timer); conn.end(); reject(err); return; }
         stream.on('data', (d: Buffer) => { stdout += d.toString(); });
@@ -50,7 +69,23 @@ async function ejecutarSSH(
       });
     });
     conn.on('error', (err) => { clearTimeout(timer); reject(err); });
-    conn.connect({ host, port: 22, username: usuario, password, readyTimeout: 20000 });
+
+    // Autenticación: llave privada preferida sobre contraseña
+    const keyPath   = process.env.SSH_KEY_PATH || path.join(os.homedir(), '.ssh', 'id_rsa');
+    const passphrase = process.env.SSH_KEY_PASSPHRASE || credencial;
+
+    const connectOpts: Parameters<typeof conn.connect>[0] = {
+      host, port: 22, username: usuario, readyTimeout: 20000,
+    };
+
+    if (fs.existsSync(keyPath)) {
+      connectOpts.privateKey = fs.readFileSync(keyPath);
+      if (passphrase) connectOpts.passphrase = passphrase;
+    } else {
+      connectOpts.password = credencial;
+    }
+
+    conn.connect(connectOpts);
   });
 }
 
@@ -93,16 +128,40 @@ const CLAUDE_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'ejecutar_ssh',
-    description: 'Ejecuta un comando en un servidor remoto vía SSH. Úsalo para instalar paquetes, configurar servicios, editar archivos y cualquier operación que requiera acceso al VPS. Siempre usa -y en comandos apt. Para comandos sudo usa: sudo -n <cmd> o pasa la contraseña con echo password | sudo -S <cmd>.',
+    description: 'Ejecuta un comando en un servidor remoto vía SSH usando llave privada (configurada en el servidor). El campo password es la passphrase de la llave privada, pero si ya está en el entorno no es necesario. Úsalo para instalar paquetes, configurar servicios, editar archivos y cualquier operación en el VPS. Siempre usa -y en comandos apt.',
     input_schema: {
       type: 'object',
       properties: {
         host:     { type: 'string', description: 'IP o hostname del servidor (ej: 45.232.252.100)' },
         usuario:  { type: 'string', description: 'Usuario SSH (ej: srvsozu)' },
-        password: { type: 'string', description: 'Contraseña SSH' },
-        comando:  { type: 'string', description: 'Comando shell a ejecutar. Usa && para encadenar pasos.' },
+        password: { type: 'string', description: 'Passphrase de la llave privada SSH (dejar vacío si está en el entorno)' },
+        comando:  { type: 'string', description: 'Comando shell a ejecutar en el servidor. Usa && para encadenar pasos.' },
       },
-      required: ['host', 'usuario', 'password', 'comando'],
+      required: ['host', 'usuario', 'comando'],
+    },
+  },
+  {
+    name: 'actualizar_tarea',
+    description: 'Actualiza el estado, notas o plan de ejecución de una tarea existente. Úsalo como PM para corregir el plan de una tarea bloqueada o agregar instrucciones adicionales al agente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tarea_id:       { type: 'string', description: 'ID de la tarea a actualizar' },
+        notas:          { type: 'string', description: 'Nuevas notas o instrucciones para la tarea (opcional)' },
+        plan_ejecucion: { type: 'string', description: 'Plan de ejecución actualizado con pasos corregidos (opcional)' },
+      },
+      required: ['tarea_id'],
+    },
+  },
+  {
+    name: 'notificar_usuario',
+    description: 'Envía un mensaje directo al superadmin en su chat del PM. Úsalo SIEMPRE al finalizar tu análisis para comunicar al usuario el resultado: qué pasó, qué hiciste y qué necesita saber o hacer.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        mensaje: { type: 'string', description: 'Mensaje claro y conciso para el usuario. Incluye contexto, problema, acción tomada y próximos pasos si aplica.' },
+      },
+      required: ['mensaje'],
     },
   },
 ];
@@ -158,6 +217,30 @@ const GEMINI_TOOLS: any[] = [{
           comando:  { type: 'STRING', description: 'Comando shell a ejecutar' },
         },
         required: ['host', 'usuario', 'password', 'comando'],
+      },
+    },
+    {
+      name: 'actualizar_tarea',
+      description: 'Actualiza notas o plan de ejecución de una tarea existente.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          tarea_id:       { type: 'STRING', description: 'ID de la tarea a actualizar' },
+          notas:          { type: 'STRING', description: 'Nuevas notas o instrucciones (opcional)' },
+          plan_ejecucion: { type: 'STRING', description: 'Plan de ejecución actualizado (opcional)' },
+        },
+        required: ['tarea_id'],
+      },
+    },
+    {
+      name: 'notificar_usuario',
+      description: 'Envía un mensaje directo al superadmin en el chat del PM. Úsalo SIEMPRE al terminar para comunicar resultado.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          mensaje: { type: 'STRING', description: 'Mensaje para el usuario: qué pasó, acción tomada, qué necesita hacer.' },
+        },
+        required: ['mensaje'],
       },
     },
   ],
@@ -227,20 +310,125 @@ async function handleTool(
       db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', agente),
       db.from('bitacora_actividad').insert({ agente, accion: `🚧 Bloqueante: ${input.problema} — ${input.accion_requerida}`, tarea_id: tareaId }),
     ]);
-    // Notificar al PM responsable (no crítico — fallo silencioso)
+    // Auto-disparar al PM para que analice y gestione el bloqueante
     try {
       const [{ data: tareaInfo }, { data: primeraEntradaPM }] = await Promise.all([
-        db.from('tareas').select('descripcion').eq('id', tareaId).maybeSingle() as Promise<{ data: { descripcion: string } | null }>,
+        db.from('tareas').select('descripcion, plan_ejecucion, requerimiento_id').eq('id', tareaId).maybeSingle() as Promise<{ data: { descripcion: string; plan_ejecucion: string | null; requerimiento_id: string | null } | null }>,
         db.from('bitacora_actividad').select('agente').eq('tarea_id', tareaId).like('agente', '%pm%').order('creado_en', { ascending: true }).limit(1).maybeSingle() as Promise<{ data: { agente: string } | null }>,
       ]);
       const pmResponsable = primeraEntradaPM?.agente ?? 'pm-global';
+      const descTarea     = (tareaInfo?.descripcion ?? '').slice(0, 200);
+      const planOriginal  = (tareaInfo?.plan_ejecucion ?? '').slice(0, 600);
+
+      const planPM = `Hay un bloqueante reportado por el agente **${agente}**.
+
+## Contexto del bloqueante
+- **Agente bloqueado:** ${agente}
+- **ID de tarea bloqueada:** ${tareaId}
+- **Descripción de la tarea:** ${descTarea}
+- **Problema reportado:** ${input.problema}
+- **Acción requerida:** ${input.accion_requerida}
+
+## Plan original de la tarea bloqueada (extracto)
+${planOriginal}
+
+## Tu misión
+1. Usa \`log_progreso\` para documentar tu análisis del bloqueante.
+2. Evalúa si el bloqueante es resoluble actualizando el plan (ej: credenciales SSH incorrectas → actualizarlas, comando que falló → corregir la sintaxis, pasos faltantes → agregarlos).
+3. Si es resoluble: usa \`actualizar_tarea\` con tarea_id="${tareaId}" para actualizar el \`plan_ejecucion\` o las \`notas\` con instrucciones corregidas. El agente será re-ejecutado por el superadmin con el plan actualizado.
+4. Si requiere intervención humana: documenta exactamente qué se necesita en \`log_progreso\`.
+5. **OBLIGATORIO**: Llama a \`notificar_usuario\` con un mensaje claro que explique al superadmin: qué agente se bloqueó, cuál es el problema, qué hiciste para resolverlo (o qué necesita hacer el usuario). El usuario NO ve la bitácora — solo ve este mensaje.
+6. Termina llamando a \`completar_tarea\` con un resumen de tu análisis y acción tomada.`;
+
+      const insertResult = await db.from('tareas').insert({
+        agente_asignado: pmResponsable,
+        descripcion: `Gestionar bloqueante de ${agente}: ${(input.problema as string).slice(0, 100)}`,
+        plan_ejecucion: planPM,
+        estado: 'pendiente',
+        ...(tareaInfo?.requerimiento_id ? { requerimiento_id: tareaInfo.requerimiento_id } : {}),
+      }).select('id').single();
+
+      const pmTaskId = (insertResult as { data: { id: string } | null }).data?.id;
+      if (pmTaskId) {
+        await db.from('bitacora_actividad').insert({
+          agente: pmResponsable,
+          accion: `🚨 ${agente} reportó un bloqueante — iniciando análisis automático.\n• Problema: ${input.problema}\n• Requiere: ${input.accion_requerida}`,
+          tarea_id: pmTaskId,
+        });
+        // Fire-and-forget: no esperamos que el PM termine para continuar
+        ejecutarEspecialista(pmTaskId, db).catch((e: unknown) => {
+          console.error('[especialista] auto-trigger PM error:', e);
+        });
+      }
+    } catch (e) {
+      console.error('[especialista] Error al auto-disparar PM:', e);
+    }
+    return { resultado: JSON.stringify({ ok: true }), terminar: true };
+  }
+
+  if (nombre === 'notificar_usuario') {
+    const mensaje = input.mensaje as string;
+    try {
+      // Buscar el superadmin (o plataforma_admin como fallback)
+      const { data: rowSuper } = await db.from('perfiles')
+        .select('id').in('rol', ['superadmin', 'plataforma_admin'])
+        .order('created_at', { ascending: true }).limit(1).maybeSingle() as { data: { id: string } | null };
+
+      if (!rowSuper?.id) return { resultado: JSON.stringify({ error: 'No se encontró usuario admin' }), terminar: false };
+      const adminId = rowSuper.id;
+
+      // Buscar conversación más reciente del usuario
+      const { data: conv } = await db.from('conversaciones_pm')
+        .select('id').eq('usuario_id', adminId)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle() as { data: { id: string } | null };
+
+      let convId: string | null = conv?.id ?? null;
+      if (!convId) {
+        const { data: newConv } = await db.from('conversaciones_pm').insert({
+          usuario_id: adminId,
+          titulo: `Notificación de ${agente}`,
+        }).select('id').single() as { data: { id: string } | null };
+        convId = newConv?.id ?? null;
+      }
+
+      if (!convId) return { resultado: JSON.stringify({ error: 'No se pudo obtener conversación' }), terminar: false };
+
+      await db.from('mensajes_pm').insert({
+        conversacion_id: convId,
+        rol: 'agente',
+        contenido: mensaje,
+        metadata: { automatico: true, fuente: agente },
+      });
+
       await db.from('bitacora_actividad').insert({
-        agente: pmResponsable,
-        accion: `🚨 ${agente} reportó un bloqueante.\n• Tarea: ${(tareaInfo?.descripcion ?? '').slice(0, 120)}\n• Problema: ${input.problema}\n• Requiere: ${input.accion_requerida}`,
+        agente,
+        accion: `📬 Mensaje enviado al usuario: ${mensaje.slice(0, 100)}`,
         tarea_id: tareaId,
       });
-    } catch {}
-    return { resultado: JSON.stringify({ ok: true }), terminar: true };
+    } catch (e) {
+      console.error('[notificar_usuario] error:', e);
+    }
+    return { resultado: JSON.stringify({ ok: true }), terminar: false };
+  }
+
+  if (nombre === 'actualizar_tarea') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updates: Record<string, any> = {};
+    if (input.notas          !== undefined) updates.notas          = input.notas;
+    if (input.plan_ejecucion !== undefined) updates.plan_ejecucion = input.plan_ejecucion;
+
+    if (Object.keys(updates).length === 0) {
+      return { resultado: JSON.stringify({ error: 'Debes proporcionar al menos notas o plan_ejecucion para actualizar.' }), terminar: false };
+    }
+
+    await db.from('tareas').update(updates).eq('id', input.tarea_id);
+    const camposActualizados = Object.keys(updates).join(', ');
+    await db.from('bitacora_actividad').insert({
+      agente,
+      accion: `📝 Tarea ${input.tarea_id} actualizada (${camposActualizados})`,
+      tarea_id: tareaId,
+    });
+    return { resultado: JSON.stringify({ ok: true, actualizados: camposActualizados }), terminar: false };
   }
 
   if (nombre === 'ejecutar_ssh') {
@@ -251,6 +439,18 @@ async function handleTool(
 
     if (!host || !usuario || !password) {
       return { resultado: JSON.stringify({ error: 'Credenciales SSH incompletas. Proporciona host, usuario y password.' }), terminar: false };
+    }
+
+    // Detectar uso incorrecto: nunca ejecutar el comando ssh dentro de ejecutar_ssh
+    // (la herramienta ya maneja la conexión — intentar ssh dentro cuelga esperando TTY)
+    const cmdTrimmed = comando.trim().toLowerCase();
+    if (cmdTrimmed.startsWith('ssh ') || cmdTrimmed === 'ssh') {
+      return {
+        resultado: JSON.stringify({
+          error: 'ERROR DE USO: No uses el comando "ssh" dentro de ejecutar_ssh. Esta herramienta YA establece la conexión SSH automáticamente. Pasa directamente el comando que quieres ejecutar en el servidor (ej: "sudo apt update"). El paso de conexión ya está resuelto.',
+        }),
+        terminar: false,
+      };
     }
 
     // Log del comando ejecutado (sin contraseña)
@@ -412,16 +612,29 @@ ${resumptionSection}
 ## Herramientas disponibles
 - **log_progreso**: Registra cada paso que ejecutas.
 - **ejecutar_ssh**: Ejecuta comandos reales en servidores remotos vía SSH. Si el plan incluye credenciales SSH (usuario, contraseña, IP), úsalas directamente en esta herramienta. Puedes encadenar comandos con &&.
+- **actualizar_tarea**: Actualiza el plan o notas de otra tarea existente (úsala como PM para corregir el plan de una tarea bloqueada).
+- **notificar_usuario**: Envía un mensaje directo al superadmin en el chat. **Obligatorio usarlo** antes de llamar \`completar_tarea\` cuando tengas información relevante para el usuario.
 - **completar_tarea**: Marca la tarea como terminada.
 - **reportar_bloqueante**: Solo si algo es genuinamente imposible de resolver (credenciales incorrectas, permiso del proveedor, etc.).
 
 ## Instrucciones
 1. Ejecuta el plan paso a paso.
-2. Llama \`log_progreso\` para CADA acción importante — incluye detalles técnicos y outputs relevantes.
-3. Para tareas en servidores: usa \`ejecutar_ssh\` directamente con las credenciales del plan. NO reportes como bloqueante algo que puedas ejecutar tú mismo.
-4. Encadena múltiples comandos en un solo \`ejecutar_ssh\` usando && cuando sean pasos secuenciales.
-5. Al terminar todos los pasos: llama \`completar_tarea\` con resumen ejecutivo.
-6. Responde siempre en español.`;
+2. **OBLIGATORIO**: Cada comando en servidor DEBE ejecutarse con \`ejecutar_ssh\`. No describas lo que harías — hazlo.
+3. Llama \`log_progreso\` solo DESPUÉS de recibir el resultado real de \`ejecutar_ssh\`, incluyendo el output obtenido.
+4. Encadena pasos secuenciales en un solo \`ejecutar_ssh\` con &&.
+5. Verifica cada paso: si el exit code no es 0 o el output indica error, investiga antes de continuar.
+6. Al terminar todos los pasos con resultados reales verificados: llama \`completar_tarea\`.
+7. Responde siempre en español.
+
+## ⛔ PROHIBIDO
+- Usar \`log_progreso\` para describir un paso que AÚN NO ejecutaste con \`ejecutar_ssh\`.
+- Llamar \`completar_tarea\` sin haber ejecutado cada paso del plan con \`ejecutar_ssh\` y verificado su resultado.
+- Asumir que un comando funcionó sin ver el output real.
+
+## REGLA CRÍTICA para ejecutar_ssh
+**NUNCA pongas \`ssh usuario@host\` como el \`comando\`.**
+La herramienta YA establece la conexión con llave privada automáticamente. El parámetro \`comando\` es lo que se ejecuta DENTRO del servidor (ej: \`docker ps\`, \`sudo apt install -y docker.io\`).
+Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa directamente al primer comando real.`;
 
   try {
     if (tieneAnthropic) {

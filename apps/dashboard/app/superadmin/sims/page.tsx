@@ -10,13 +10,13 @@ export default async function SimsPage() {
       .from('bitacora_actividad')
       .select('id, agente, accion, creado_en, tarea_id')
       .order('creado_en', { ascending: false })
-      .limit(120),
+      .limit(300),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any)
       .from('tareas')
       .select('id, agente_asignado, descripcion, estado, notas, plan_ejecucion, creado_en')
       .order('creado_en', { ascending: false })
-      .limit(50),
+      .limit(150),
   ]);
 
   return (

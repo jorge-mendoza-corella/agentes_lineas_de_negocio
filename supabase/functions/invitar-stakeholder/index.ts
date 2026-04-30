@@ -7,14 +7,15 @@ const APP_URL = Deno.env.get('DASHBOARD_URL')!;
 
 Deno.serve(async (req: Request) => {
   try {
-    const { nombre, email, areas } = await req.json() as {
+    const { nombre, email, areas, empresa_id } = await req.json() as {
       nombre: string;
       email: string;
       areas: string[];
+      empresa_id: string;
     };
 
-    if (!nombre || !email || !areas?.length) {
-      return new Response(JSON.stringify({ error: 'nombre, email y areas son requeridos' }), {
+    if (!nombre || !email || !areas?.length || !empresa_id) {
+      return new Response(JSON.stringify({ error: 'nombre, email, areas y empresa_id son requeridos' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -34,12 +35,20 @@ Deno.serve(async (req: Request) => {
 
     const userId = invitacion.user.id;
 
-    // Crear perfil
+    // Obtener nombre de la empresa para el email
+    const { data: empresa } = await admin
+      .from('empresas')
+      .select('nombre')
+      .eq('id', empresa_id)
+      .single();
+
+    // Crear perfil con empresa asignada
     const { error: errorPerfil } = await admin.from('perfiles').upsert({
       id: userId,
       nombre,
       email,
       rol: 'stakeholder',
+      empresa_id,
     });
 
     if (errorPerfil) throw errorPerfil;
@@ -62,11 +71,11 @@ Deno.serve(async (req: Request) => {
         Subject: 'Acceso al portal de aprobaciones — Área de Sistemas',
         HtmlBody: `
           <h2>Hola ${nombre},</h2>
-          <p>Se te ha dado acceso al portal de aprobaciones del Área de Sistemas.</p>
+          <p>Se te ha dado acceso al portal de aprobaciones del Área de Sistemas${empresa ? ` para <strong>${empresa.nombre}</strong>` : ''}.</p>
           <p>Podrás revisar y aprobar solicitudes de las áreas: <strong>${areas.join(', ')}</strong>.</p>
           <p>Revisa tu email para encontrar el enlace de acceso enviado por Supabase.</p>
         `,
-        TextBody: `Hola ${nombre}, tienes acceso al portal de aprobaciones. Áreas: ${areas.join(', ')}.`,
+        TextBody: `Hola ${nombre}, tienes acceso al portal de aprobaciones${empresa ? ` para ${empresa.nombre}` : ''}. Áreas: ${areas.join(', ')}.`,
       }),
     });
 

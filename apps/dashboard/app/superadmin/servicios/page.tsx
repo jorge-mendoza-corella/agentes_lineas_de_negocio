@@ -1,10 +1,20 @@
 import { createClient } from '@/lib/supabase/server';
 import CatalogoServicios from '@/components/superadmin/CatalogoServicios';
 
-export default async function ServiciosPage() {
-  const supabase = await createClient();
+type ServicioRow = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  icono: string | null;
+  activo: boolean | null;
+  servicio_agentes: { agente_nombre: string; tarifa_hora: number | null }[];
+};
 
-  const [{ data: servicios }, { data: tarifas }] = await Promise.all([
+export default async function ServiciosPage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = (await createClient()) as any;
+
+  const [{ data: serviciosRaw }, { data: tarifas }] = await Promise.all([
     supabase
       .from('servicios')
       .select('*, servicio_agentes(agente_nombre, tarifa_hora)')
@@ -15,6 +25,8 @@ export default async function ServiciosPage() {
       .order('area'),
   ]);
 
+  const servicios = (serviciosRaw ?? []) as ServicioRow[];
+
   return (
     <div className="space-y-6">
       <div>
@@ -24,14 +36,12 @@ export default async function ServiciosPage() {
         </p>
       </div>
       <CatalogoServicios
-        servicios={(servicios ?? []).map(s => ({
+        servicios={servicios.map(s => ({
           ...s,
-          agentes: (s.servicio_agentes ?? []).map(
-            (a: { agente_nombre: string; tarifa_hora: number | null }) => ({
-              agente_nombre: a.agente_nombre,
-              tarifa_hora: a.tarifa_hora,
-            })
-          ),
+          agentes: (s.servicio_agentes ?? []).map(a => ({
+            agente_nombre: a.agente_nombre,
+            tarifa_hora: a.tarifa_hora,
+          })),
         }))}
         tarifas={tarifas ?? []}
       />

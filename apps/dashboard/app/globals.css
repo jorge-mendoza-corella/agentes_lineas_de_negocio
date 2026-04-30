@@ -12,3 +12,131 @@
     @apply bg-gray-50 text-gray-900 antialiased;
   }
 }
+
+/* ── Animaciones de agentes ── */
+@keyframes agente-idle {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%       { transform: translateY(-5px) scale(1.05); }
+}
+@keyframes agente-caminando {
+  0%, 100% { transform: translateX(0) rotate(0deg) scale(1); }
+  25%      { transform: translateX(5px) rotate(14deg) scale(0.95); }
+  75%      { transform: translateX(-5px) rotate(-14deg) scale(0.95); }
+}
+@keyframes agente-trabajando {
+  0%, 100% { transform: scale(1) translateY(0) rotate(0deg); }
+  30%      { transform: scale(1.15) translateY(-8px) rotate(-7deg); }
+  70%      { transform: scale(1.15) translateY(-8px) rotate(7deg); }
+}
+@keyframes agente-hablando {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50%      { transform: scale(1.2) translateY(-5px); }
+}
+@keyframes agente-celebrando {
+  0%, 100% { transform: scale(1) rotate(0deg) translateY(0); }
+  20%, 60% { transform: scale(1.4) rotate(20deg) translateY(-14px); }
+  40%, 80% { transform: scale(1.4) rotate(-20deg) translateY(-14px); }
+}
+
+.agente-idle      { animation: agente-idle      2.4s ease-in-out infinite; }
+.agente-caminando { animation: agente-caminando  0.35s linear   infinite; }
+.agente-trabajando{ animation: agente-trabajando 1.8s ease-in-out infinite; }
+.agente-hablando  { animation: agente-hablando   0.7s ease-in-out infinite; }
+.agente-celebrando{ animation: agente-celebrando 0.55s ease-in-out infinite; }
+
+/* ── Animaciones Sims v2 (vista de agentes rediseñada) ── */
+
+@keyframes sims-idle-kf {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%       { transform: translateY(-5px) scale(1.04); }
+}
+
+@keyframes sims-caminando-kf {
+  0%, 100% { transform: translateX(0) rotate(0deg) scale(1); }
+  25%       { transform: translateX(5px) rotate(10deg) scale(0.96); }
+  75%       { transform: translateX(-5px) rotate(-10deg) scale(0.96); }
+}
+
+@keyframes sims-trabajando-kf {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  20%       { transform: translateY(-3px) rotate(-4deg); }
+  40%       { transform: translateY(0) rotate(0deg); }
+  60%       { transform: translateY(-3px) rotate(4deg); }
+  80%       { transform: translateY(0) rotate(0deg); }
+}
+
+@keyframes sims-hablando-kf {
+  0%, 100% { transform: scale(1) translateY(0); }
+  30%       { transform: scale(1.1) translateY(-5px); }
+  60%       { transform: scale(1.05) translateY(-2px); }
+}
+
+@keyframes sims-celebrando-kf {
+  0%, 100% { transform: scale(1) rotate(0deg) translateY(0); }
+  15%       { transform: scale(1.35) rotate(18deg) translateY(-14px); }
+  30%       { transform: scale(1.4) rotate(-18deg) translateY(-16px); }
+  45%       { transform: scale(1.35) rotate(12deg) translateY(-12px); }
+  65%       { transform: scale(1.2) rotate(-8deg) translateY(-7px); }
+  82%       { transform: scale(1.08) rotate(4deg) translateY(-3px); }
+}
+
+@keyframes sims-burbuja-kf {
+  0%   { transform: scale(0.4); opacity: 0; }
+  55%  { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes sims-confeti-kf {
+  0%   { transform: translateY(0) rotate(0deg) scale(0.6); opacity: 1; }
+  35%  { transform: translateY(-16px) rotate(200deg) scale(1.3); opacity: 1; }
+  65%  { transform: translateY(-10px) rotate(300deg) scale(1); opacity: 0.8; }
+  100% { transform: translateY(0) rotate(360deg) scale(0.7); opacity: 0; }
+}
+
+@keyframes sims-papel-kf {
+  0%   { transform: translateY(-90px) translateX(-70px) rotate(-35deg) scale(0.4); opacity: 0; }
+  15%  { opacity: 1; }
+  55%  { transform: translateY(-30px) translateX(-15px) rotate(8deg) scale(1.1); opacity: 1; }
+  85%  { transform: translateY(-6px) translateX(-3px) rotate(-2deg) scale(1); opacity: 0.9; }
+  100% { transform: translateY(0) translateX(0) rotate(0deg) scale(0.85); opacity: 0; }
+}
+
+.sims-avatar-idle       { animation: sims-idle-kf        2.6s ease-in-out           infinite; }
+.sims-avatar-caminando  { animation: sims-caminando-kf   0.38s linear               infinite; }
+.sims-avatar-trabajando { animation: sims-trabajando-kf  1.7s ease-in-out           infinite; }
+.sims-avatar-hablando   { animation: sims-hablando-kf    0.65s ease-in-out          infinite; }
+.sims-avatar-celebrando { animation: sims-celebrando-kf  0.6s ease-in-out           infinite; }
+.sims-burbuja           { animation: sims-burbuja-kf     0.28s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+.sims-confeti           { animation: sims-confeti-kf     1.3s ease-out              forwards; }
+.sims-papel-vuela       { animation: sims-papel-kf       2.2s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+
+/* ── Actividades lounge ── */
+@keyframes sims-zzz-kf {
+  0%   { transform: translateY(0) scale(0.6); opacity: 0; }
+  25%  { opacity: 0.85; }
+  100% { transform: translateY(-22px) scale(1.2); opacity: 0; }
+}
+.sims-zzz { display:inline-block; animation: sims-zzz-kf 2.6s ease-in-out infinite; color:rgba(148,163,184,0.75); font-weight:700; }
+.sims-zzz-2 { animation-delay: 0.9s; }
+.sims-zzz-3 { animation-delay: 1.8s; }
+
+@keyframes sims-drink-kf {
+  0%,55%  { transform: rotate(0deg) translateY(0); }
+  70%     { transform: rotate(-22deg) translateY(-3px); }
+  90%     { transform: rotate(-22deg) translateY(-3px); }
+  100%    { transform: rotate(0deg) translateY(0); }
+}
+.sims-bebiendo { animation: sims-drink-kf 3.8s ease-in-out infinite; transform-origin: bottom center; display:inline-block; }
+
+@keyframes sims-play-kf {
+  0%,100% { transform: translateY(0) rotate(0deg); }
+  30%     { transform: translateY(-4px) rotate(-6deg); }
+  70%     { transform: translateY(-2px) rotate(5deg); }
+}
+.sims-jugando { animation: sims-play-kf 0.7s ease-in-out infinite; display:inline-block; }
+
+@keyframes sims-coffee-kf {
+  0%,100% { transform: rotate(-5deg); }
+  50%     { transform: rotate(5deg); }
+}
+.sims-tomando-cafe { animation: sims-coffee-kf 2.2s ease-in-out infinite; display:inline-block; }

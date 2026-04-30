@@ -636,7 +636,9 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   const [papeles, setPapeles]        = useState<Papel[]>([]);
   const [avatarPending, startAvatar] = useTransition();
   const [dragId, setDragId]          = useState<string | null>(null);
+  const dragIdRef                    = useRef<string | null>(null);
   const [dragOver, setDragOver]      = useState<'lounge' | 'sala' | 'pasillo' | null>(null);
+  const dragEnterCount               = useRef<Record<string, number>>({});
   const [expandedTareaId, setExpandedTareaId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -724,13 +726,22 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
           {/* ═══ ZONA 1: LOUNGE ═══ */}
           <div
             className="relative flex-shrink-0 transition-all"
-            onDragOver={e => { e.preventDefault(); setDragOver('lounge'); }}
-            onDragLeave={() => setDragOver(null)}
+            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+            onDragEnter={e => {
+              e.preventDefault();
+              dragEnterCount.current['lounge'] = (dragEnterCount.current['lounge'] ?? 0) + 1;
+              setDragOver('lounge');
+            }}
+            onDragLeave={() => {
+              dragEnterCount.current['lounge'] = (dragEnterCount.current['lounge'] ?? 1) - 1;
+              if ((dragEnterCount.current['lounge'] ?? 0) <= 0) { dragEnterCount.current['lounge'] = 0; setDragOver(null); }
+            }}
             onDrop={e => {
               e.preventDefault();
+              dragEnterCount.current['lounge'] = 0;
               setDragOver(null);
-              const id = e.dataTransfer.getData('agente_id');
-              if (!id || !atDesk(getEstado(id))) return;
+              const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
+              if (!id) return;
               startAvatar(async () => { await moverAvatarADescanso(id); });
             }}
             style={{
@@ -757,8 +768,8 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
               return (
                 <div key={id} className="absolute transition-all duration-1200"
                   draggable
-                  onDragStart={e => { e.dataTransfer.setData('agente_id', id); setDragId(id); }}
-                  onDragEnd={() => setDragId(null)}
+                  onDragStart={e => { e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed = 'move'; dragIdRef.current = id; setDragId(id); }}
+                  onDragEnd={() => { dragIdRef.current = null; setDragId(null); }}
                   style={{ left:`${pos.x}%`, top:`${pos.y + 5}%`, transform:'translate(-50%, -100%)', zIndex:10, opacity: dragId === id ? 0.5 : 1, cursor:'grab' }}>
                   <AgenteCard id={id} cfg={cfg} estado={getEstado(id)} selected={selId===id} onClick={() => setSelId(selId===id ? null : id)} />
                 </div>
@@ -769,18 +780,25 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
           {/* ═══ ZONA 2: PASILLO ═══ */}
           <div
             className="relative flex-shrink-0 flex flex-col items-center transition-all"
-            onDragOver={e => { e.preventDefault(); setDragOver('pasillo'); }}
-            onDragLeave={() => setDragOver(null)}
+            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+            onDragEnter={e => {
+              e.preventDefault();
+              dragEnterCount.current['pasillo'] = (dragEnterCount.current['pasillo'] ?? 0) + 1;
+              setDragOver('pasillo');
+            }}
+            onDragLeave={() => {
+              dragEnterCount.current['pasillo'] = (dragEnterCount.current['pasillo'] ?? 1) - 1;
+              if ((dragEnterCount.current['pasillo'] ?? 0) <= 0) { dragEnterCount.current['pasillo'] = 0; setDragOver(null); }
+            }}
             onDrop={e => {
               e.preventDefault();
+              dragEnterCount.current['pasillo'] = 0;
               setDragOver(null);
-              const id = e.dataTransfer.getData('agente_id');
+              const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
               if (!id) return;
               if (!atDesk(getEstado(id)) && getEstado(id) !== 'caminando') {
-                // En lounge → reanudar trabajo
                 startAvatar(async () => { await reanudarTrabajo(id); });
               } else if (atDesk(getEstado(id))) {
-                // En sala → mover a descanso
                 startAvatar(async () => { await moverAvatarADescanso(id); });
               }
             }}
@@ -814,12 +832,21 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
           {/* ═══ ZONA 3: SALA DE TRABAJO ═══ */}
           <div
             className="relative flex-1 transition-all"
-            onDragOver={e => { e.preventDefault(); setDragOver('sala'); }}
-            onDragLeave={() => setDragOver(null)}
+            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+            onDragEnter={e => {
+              e.preventDefault();
+              dragEnterCount.current['sala'] = (dragEnterCount.current['sala'] ?? 0) + 1;
+              setDragOver('sala');
+            }}
+            onDragLeave={() => {
+              dragEnterCount.current['sala'] = (dragEnterCount.current['sala'] ?? 1) - 1;
+              if ((dragEnterCount.current['sala'] ?? 0) <= 0) { dragEnterCount.current['sala'] = 0; setDragOver(null); }
+            }}
             onDrop={e => {
               e.preventDefault();
+              dragEnterCount.current['sala'] = 0;
               setDragOver(null);
-              const id = e.dataTransfer.getData('agente_id');
+              const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
               if (!id || atDesk(getEstado(id))) return;
               startAvatar(async () => { await reanudarTrabajo(id); });
             }}
@@ -934,8 +961,8 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
               return (
                 <div key={`av-${id}`} className="absolute transition-all duration-1000"
                   draggable
-                  onDragStart={e => { e.dataTransfer.setData('agente_id', id); setDragId(id); }}
-                  onDragEnd={() => setDragId(null)}
+                  onDragStart={e => { e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed = 'move'; dragIdRef.current = id; setDragId(id); }}
+                  onDragEnd={() => { dragIdRef.current = null; setDragId(null); }}
                   style={{ left:`${pos.x}%`, top:`${pos.y + 3}%`, transform:'translate(-50%, -100%)', zIndex:20, opacity: dragId === id ? 0.45 : 1, cursor:'grab' }}>
                   <AgenteCard id={id} cfg={cfg} estado={getEstado(id)} selected={selId===id} onClick={() => setSelId(selId===id ? null : id)} />
                 </div>
@@ -1021,8 +1048,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                   const total      = steps.length || logCount;
                   const finalizando = t.estado === 'en_progreso' && total > 0 && logCount >= total;
                   const doneCount  = t.estado === 'completada' ? total
-                                   : t.estado === 'en_progreso' ? Math.min(logCount, finalizando ? total - 1 : total)
-                                   : 0;
+                                   : Math.min(logCount, finalizando ? total - 1 : total);
                   const remaining  = total - doneCount;
                   const isExpanded = expandedTareaId === t.id;
                   return (
@@ -1074,7 +1100,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               {steps.map((step, i) => {
                                 const isCompleted = t.estado === 'completada';
                                 const isActive    = t.estado === 'en_progreso';
-                                const stepDone    = isCompleted || (isActive && i < doneCount);
+                                const stepDone    = isCompleted || (doneCount > 0 && i < doneCount);
                                 const stepActive  = (isActive && i === Math.min(doneCount, steps.length - 1)) || (finalizando && i === steps.length - 1);
                                 return (
                                   <div key={i} className="flex items-start gap-1.5">

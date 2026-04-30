@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 
 interface Adjunto {
@@ -65,6 +66,33 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.onload = () => resolve((reader.result as string).split(',')[1] ?? '');
     reader.onerror = reject;
     reader.readAsDataURL(blob);
+  });
+}
+
+// Comprime y normaliza imágenes a JPEG ≤ 2048px, ~85% calidad (~200-400KB)
+// Esto evita payloads enormes y garantiza formato compatible con Claude/Gemini
+function comprimirImagen(blob: Blob): Promise<{ blob: Blob; mimeType: 'image/jpeg' }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      const MAX = 2048;
+      const scale = img.width > MAX ? MAX / img.width : 1;
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(
+        (result) => resolve({ blob: result ?? blob, mimeType: 'image/jpeg' }),
+        'image/jpeg',
+        0.85
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve({ blob, mimeType: 'image/jpeg' }); };
+    img.src = url;
   });
 }
 
@@ -195,6 +223,30 @@ export default function ChatPM({
 
   // Limpia el TTS al desmontar
   useEffect(() => () => { window.speechSynthesis?.cancel(); }, []);
+
+  // Suscripción Realtime — recibe mensajes proactivos del PM (bloqueantes, completados, etc.)
+  useEffect(() => {
+    if (!conversacionId) return;
+    const supabase = createClient();
+    const canal = supabase.channel(`chat-pm-${conversacionId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'mensajes_pm',
+        filter: `conversacion_id=eq.${conversacionId}`,
+      }, (payload) => {
+        const nuevo = payload.new as { id: string; rol: string; contenido: string; metadata?: Record<string, unknown> };
+        // Solo procesar mensajes del agente con flag automático (proactivos)
+        if (nuevo.rol !== 'agente' || !(nuevo.metadata as Record<string, unknown>)?.automatico) return;
+        setMensajes(prev => {
+          if (prev.some(m => m.id === nuevo.id)) return prev;
+          return [...prev, { id: nuevo.id, rol: 'agente', contenido: nuevo.contenido }];
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversacionId]);
 
   // Limpia MediaRecorder y timer al desmontar
   useEffect(() => () => {
@@ -508,14 +560,16 @@ export default function ChatPM({
     for (const item of imageItems) {
       const blob = item.getAsFile();
       if (!blob) continue;
-      const base64 = await blobToBase64(blob);
+      const preview = URL.createObjectURL(blob);
+      const { blob: compressed, mimeType } = await comprimirImagen(blob);
+      const base64 = await blobToBase64(compressed);
       setAdjuntos(prev => [...prev, {
         id: crypto.randomUUID(),
         tipo: 'imagen',
-        nombre: `imagen.${item.type.split('/')[1] || 'png'}`,
-        mimeType: item.type,
+        nombre: 'imagen.jpg',
+        mimeType,
         base64,
-        preview: URL.createObjectURL(blob),
+        preview,
       }]);
     }
   }
@@ -523,18 +577,32 @@ export default function ChatPM({
   async function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     for (const file of files) {
-      const base64 = await blobToBase64(file);
       const tipo: Adjunto['tipo'] = file.type.startsWith('image/') ? 'imagen'
         : file.type.startsWith('audio/') ? 'audio'
         : file.type.startsWith('video/') ? 'video'
         : 'documento';
+      let base64: string;
+      let mimeType = file.type;
+      let nombre = file.name;
+      let preview: string | undefined;
+      if (tipo === 'imagen') {
+        const preview0 = URL.createObjectURL(file);
+        const { blob: compressed, mimeType: cMime } = await comprimirImagen(file);
+        base64 = await blobToBase64(compressed);
+        mimeType = cMime;
+        nombre = file.name.replace(/\.[^.]+$/, '.jpg');
+        preview = preview0;
+      } else {
+        base64 = await blobToBase64(file);
+        preview = undefined;
+      }
       setAdjuntos(prev => [...prev, {
         id: crypto.randomUUID(),
         tipo,
-        nombre: file.name,
-        mimeType: file.type,
+        nombre,
+        mimeType,
         base64,
-        preview: tipo === 'imagen' ? URL.createObjectURL(file) : undefined,
+        preview: tipo === 'imagen' ? preview : undefined,
       }]);
     }
     e.target.value = '';

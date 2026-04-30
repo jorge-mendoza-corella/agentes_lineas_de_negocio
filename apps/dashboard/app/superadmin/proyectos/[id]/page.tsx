@@ -27,21 +27,37 @@ export default async function ProyectoDetallePage({ params }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as any;
 
-  const [proyectoRes, requerimientosRes, tareasDirectasRes, bitacoraRes] = await Promise.all([
+  // Batch 1: proyecto + tareas (bitácora necesita los IDs de tareas primero)
+  const [proyectoRes, requerimientosRes, tareasDirectasRes] = await Promise.all([
     supabase.from('proyectos').select(`*, areas_negocio ( nombre )`).eq('id', id).single(),
     supabase.from('requerimientos').select(`*, tareas ( * )`).eq('proyecto_id', id).order('creado_en', { ascending: false }),
     supabase.from('tareas')
       .select('id, agente_asignado, descripcion, estado, plan_ejecucion, notas, creado_en, iniciado_en, completado_en')
       .eq('proyecto_id', id)
       .order('creado_en', { ascending: false }),
-    supabase.from('bitacora_actividad')
-      .select('id, agente, accion, creado_en, tarea_id')
-      .eq('proyecto_id', id)
-      .order('creado_en', { ascending: false })
-      .limit(300),
   ]);
 
   if (!proyectoRes.data) notFound();
+
+  // Recopilar todos los tarea_ids del proyecto para buscar bitácora
+  // (ejecutarEspecialista inserta con tarea_id pero sin proyecto_id)
+  const tareaIdsDirectas = ((tareasDirectasRes.data ?? []) as any[]).map((t: any) => t.id as string);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tareaIdsReqs = ((requerimientosRes.data ?? []) as any[])
+    .flatMap((r: any) => ((r.tareas ?? []) as any[]).map((t: any) => t.id as string));
+  const todosTareaIds = [...new Set([...tareaIdsDirectas, ...tareaIdsReqs])];
+
+  // Batch 2: bitácora filtrada por proyecto_id O por tarea_id (cubre entradas sin proyecto_id)
+  const orFilter = todosTareaIds.length > 0
+    ? `proyecto_id.eq.${id},tarea_id.in.(${todosTareaIds.join(',')})`
+    : `proyecto_id.eq.${id}`;
+
+  const bitacoraRes = await supabase
+    .from('bitacora_actividad')
+    .select('id, agente, accion, creado_en, tarea_id')
+    .or(orFilter)
+    .order('creado_en', { ascending: false })
+    .limit(500);
 
   const proyecto = proyectoRes.data;
   const requerimientos = requerimientosRes.data ?? [];

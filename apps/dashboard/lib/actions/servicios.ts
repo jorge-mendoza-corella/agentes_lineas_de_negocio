@@ -3,6 +3,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 
+type Sb = Awaited<ReturnType<typeof createClient>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = (sb: Sb) => sb as any;
+
 // ── Catálogo de servicios ──────────────────────────────────────────────────
 
 export async function actualizarServicio(
@@ -10,7 +14,7 @@ export async function actualizarServicio(
   updates: { nombre?: string; descripcion?: string; icono?: string; activo?: boolean }
 ) {
   const supabase = await createClient();
-  const { error } = await supabase.from('servicios').update(updates).eq('id', id);
+  const { error } = await db(supabase).from('servicios').update(updates).eq('id', id);
   if (error) throw new Error(error.message);
   revalidatePath('/superadmin/servicios');
 }
@@ -20,9 +24,10 @@ export async function setAgentesServicio(
   agentes: { agente_nombre: string; tarifa_hora: number | null }[]
 ) {
   const supabase = await createClient();
-  await supabase.from('servicio_agentes').delete().eq('servicio_id', servicio_id);
+  const sb = db(supabase);
+  await sb.from('servicio_agentes').delete().eq('servicio_id', servicio_id);
   if (agentes.length > 0) {
-    const { error } = await supabase.from('servicio_agentes').insert(
+    const { error } = await sb.from('servicio_agentes').insert(
       agentes.map(a => ({
         servicio_id,
         agente_nombre: a.agente_nombre,
@@ -38,7 +43,8 @@ export async function setAgentesServicio(
 
 export async function toggleEmpresaContrato(empresa_id: string, servicio_id: string, activo: boolean) {
   const supabase = await createClient();
-  const { data: existing } = await supabase
+  const sb = db(supabase);
+  const { data: existing } = await sb
     .from('empresa_contratos')
     .select('id')
     .eq('empresa_id', empresa_id)
@@ -46,9 +52,9 @@ export async function toggleEmpresaContrato(empresa_id: string, servicio_id: str
     .single();
 
   if (existing) {
-    await supabase.from('empresa_contratos').update({ activo }).eq('id', existing.id);
+    await sb.from('empresa_contratos').update({ activo }).eq('id', existing.id);
   } else {
-    await supabase.from('empresa_contratos').insert({ empresa_id, servicio_id, activo });
+    await sb.from('empresa_contratos').insert({ empresa_id, servicio_id, activo });
   }
   revalidatePath(`/superadmin/empresas/${empresa_id}`);
 }
@@ -57,7 +63,7 @@ export async function toggleEmpresaContrato(empresa_id: string, servicio_id: str
 
 export async function upsertEmpresaTarifa(empresa_id: string, agente_nombre: string, tarifa_hora: number) {
   const supabase = await createClient();
-  const { error } = await supabase
+  const { error } = await db(supabase)
     .from('empresa_agente_tarifas')
     .upsert({ empresa_id, agente_nombre, tarifa_hora }, { onConflict: 'empresa_id,agente_nombre' });
   if (error) throw new Error(error.message);
@@ -66,7 +72,7 @@ export async function upsertEmpresaTarifa(empresa_id: string, agente_nombre: str
 
 export async function deleteEmpresaTarifa(empresa_id: string, agente_nombre: string) {
   const supabase = await createClient();
-  const { error } = await supabase
+  const { error } = await db(supabase)
     .from('empresa_agente_tarifas')
     .delete()
     .eq('empresa_id', empresa_id)
@@ -83,37 +89,38 @@ export async function getAgentesEmpresa(empresa_id: string): Promise<{
   servicio_nombre: string;
 }[]> {
   const supabase = await createClient();
+  const sb = db(supabase);
 
-  // Contratos activos de la empresa con sus servicios y agentes
-  const { data: contratos } = await supabase
+  const { data: contratos } = await sb
     .from('empresa_contratos')
     .select('servicio_id, servicios(nombre, servicio_agentes(agente_nombre))')
     .eq('empresa_id', empresa_id)
     .eq('activo', true);
 
-  // Tarifas personalizadas de la empresa
-  const { data: tarifasEmpresa } = await supabase
+  const { data: tarifasEmpresa } = await sb
     .from('empresa_agente_tarifas')
     .select('agente_nombre, tarifa_hora')
     .eq('empresa_id', empresa_id);
 
-  // Tarifas globales como fallback
-  const { data: tarifasGlobales } = await supabase
+  const { data: tarifasGlobales } = await sb
     .from('tarifas_agentes')
     .select('agente_nombre, tarifa_hora');
 
   const tarifaEmpresaMap = Object.fromEntries(
-    (tarifasEmpresa ?? []).map(t => [t.agente_nombre, t.tarifa_hora])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (tarifasEmpresa ?? []).map((t: any) => [t.agente_nombre, t.tarifa_hora])
   );
   const tarifaGlobalMap = Object.fromEntries(
-    (tarifasGlobales ?? []).map(t => [t.agente_nombre, t.tarifa_hora])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (tarifasGlobales ?? []).map((t: any) => [t.agente_nombre, t.tarifa_hora])
   );
 
   const seen = new Set<string>();
   const result: { agente_nombre: string; tarifa_hora: number; servicio_nombre: string }[] = [];
 
-  for (const contrato of contratos ?? []) {
-    const servicio = contrato.servicios as unknown as {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const contrato of contratos ?? [] as any[]) {
+    const servicio = contrato.servicios as {
       nombre: string;
       servicio_agentes: { agente_nombre: string; tarifa_hora: number | null }[];
     } | null;
@@ -121,7 +128,6 @@ export async function getAgentesEmpresa(empresa_id: string): Promise<{
     for (const sa of servicio.servicio_agentes ?? []) {
       if (seen.has(sa.agente_nombre)) continue;
       seen.add(sa.agente_nombre);
-      // Jerarquía: empresa-específico > servicio-específico > global
       result.push({
         agente_nombre: sa.agente_nombre,
         tarifa_hora: tarifaEmpresaMap[sa.agente_nombre] ?? sa.tarifa_hora ?? tarifaGlobalMap[sa.agente_nombre] ?? 0,

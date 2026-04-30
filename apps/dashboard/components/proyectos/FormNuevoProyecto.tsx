@@ -49,14 +49,18 @@ export default function FormNuevoProyecto({ areas, empresas }: Props) {
   return (
     <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-        <input
+        <label className="block text-sm font-medium text-gray-700 mb-1">Empresa *</label>
+        <select
           required
-          value={nombre}
-          onChange={e => setNombre(e.target.value)}
-          placeholder="Ej: Dashboard de cobranza"
+          value={empresaId}
+          onChange={e => { setEmpresaId(e.target.value); setAreaId(''); }}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+        >
+          <option value="">Selecciona empresa</option>
+          {empresas.map(emp => (
+            <option key={emp.id} value={emp.id}>{emp.nombre}</option>
+          ))}
+        </select>
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Área <span className="text-gray-400 font-normal">(opcional)</span></label>
@@ -72,17 +76,14 @@ export default function FormNuevoProyecto({ areas, empresas }: Props) {
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Empresa</label>
-        <select
-          value={empresaId}
-          onChange={e => setEmpresaId(e.target.value)}
+        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del proyecto *</label>
+        <input
+          required
+          value={nombre}
+          onChange={e => setNombre(e.target.value)}
+          placeholder="Ej: Dashboard de cobranza"
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Sin empresa asignada</option>
-          {empresas.map(emp => (
-            <option key={emp.id} value={emp.id}>{emp.nombre}</option>
-          ))}
-        </select>
+        />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">URL del repo</label>

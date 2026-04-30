@@ -15,8 +15,13 @@ interface Requerimiento {
   id: string; titulo: string; prioridad: string; estado: string;
   tareas: Tarea[];
 }
+interface TareaIa {
+  id: string; descripcion: string; estado: string;
+  agente_asignado: string; notas: string | null;
+  iniciado_en: string | null; completado_en: string | null;
+}
 
-interface Props { requerimientos: Requerimiento[]; proyectoId: string }
+interface Props { requerimientos: Requerimiento[]; proyectoId: string; tareasIa?: TareaIa[] }
 
 const COLUMNAS: { key: Estado; label: string; color: string }[] = [
   { key: 'pendiente',   label: 'Pendiente',   color: 'bg-gray-50 border-gray-200' },
@@ -41,26 +46,39 @@ const AGENTE_EMOJI: Record<string, string> = {
   'pm-global':'🎯','marketing-pm':'📣','marketing-seo':'🔎',
 };
 
-export default function KanbanTareas({ requerimientos, proyectoId }: Props) {
+const REQ_IA = { id: '__ia__', titulo: '🤖 Tarea IA', prioridad: 'alta', estado: 'ia', tareas: [] };
+
+export default function KanbanTareas({ requerimientos, proyectoId, tareasIa }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [actualizando, setActualizando] = useState<string | null>(null);
 
-  const todasTareas = requerimientos.flatMap(r =>
-    r.tareas.map(t => ({ ...t, requerimiento: r }))
-  );
+  const todasTareas = [
+    ...requerimientos.flatMap(r => r.tareas.map(t => ({ ...t, requerimiento: r }))),
+    ...(tareasIa ?? []).map(t => ({
+      id: t.id,
+      descripcion: t.descripcion,
+      estado: (t.estado as Estado) ?? 'pendiente',
+      agente_asignado: t.agente_asignado,
+      rama: null,
+      iniciado_en: t.iniciado_en,
+      completado_en: t.completado_en,
+      requerimiento: REQ_IA,
+    })),
+  ];
 
   async function moverTarea(tareaId: string, nuevoEstado: Estado) {
     setActualizando(tareaId);
     const updates: Record<string, unknown> = { estado: nuevoEstado };
     if (nuevoEstado === 'en_progreso') updates.iniciado_en = new Date().toISOString();
     if (nuevoEstado === 'completada') updates.completado_en = new Date().toISOString();
-    await supabase.from('tareas').update(updates).eq('id', tareaId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('tareas').update(updates).eq('id', tareaId);
     setActualizando(null);
     router.refresh();
   }
 
-  if (requerimientos.length === 0) {
+  if (requerimientos.length === 0 && !tareasIa?.length) {
     return (
       <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center text-sm text-gray-400">
         No hay requerimientos todavía. Agrega el primero arriba.

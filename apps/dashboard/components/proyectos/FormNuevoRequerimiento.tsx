@@ -28,19 +28,21 @@ export default function FormNuevoRequerimiento({ proyectoId }: Props) {
     setCargando(true);
     setError('');
 
-    const { data: req, error: errReq } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    const { data: req, error: errReq } = await sb
       .from('requerimientos')
       .insert({ titulo, descripcion: descripcion || null, prioridad, proyecto_id: proyectoId })
       .select('id')
-      .single();
+      .single() as { data: { id: string } | null; error: { message: string } | null };
 
     if (errReq) { setError(errReq.message); setCargando(false); return; }
 
-    const { error: errTarea } = await supabase.from('tareas').insert({
-      requerimiento_id: req.id,
+    const { error: errTarea } = await sb.from('tareas').insert({
+      requerimiento_id: req!.id,
       agente_asignado: agente,
       descripcion: titulo,
-    });
+    }) as { error: { message: string } | null };
 
     if (errTarea) { setError(errTarea.message); setCargando(false); return; }
 

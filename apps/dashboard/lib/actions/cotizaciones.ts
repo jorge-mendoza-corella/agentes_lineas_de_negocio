@@ -23,7 +23,9 @@ export async function crearCotizacion(data: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
 
-  const { data: cotizacion, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = supabase as any;
+  const { data: cotizacion, error } = await sb
     .from('cotizaciones')
     .insert({
       proyecto_id: data.proyecto_id || null,
@@ -33,12 +35,12 @@ export async function crearCotizacion(data: {
       descuento_pct: data.descuento_pct ?? 0,
     })
     .select('id')
-    .single();
+    .single() as { data: { id: string } | null; error: { message: string } | null };
 
   if (error || !cotizacion) throw new Error(error?.message ?? 'Error creando cotización');
 
   if (data.lineas.length > 0) {
-    const { error: errLineas } = await supabase.from('cotizacion_lineas').insert(
+    const { error: errLineas } = await sb.from('cotizacion_lineas').insert(
       data.lineas.map((l, i) => ({
         cotizacion_id: cotizacion.id,
         agente_nombre: l.agente_nombre,
@@ -48,7 +50,7 @@ export async function crearCotizacion(data: {
         tarea_id: l.tarea_id || null,
         orden: i,
       }))
-    );
+    ) as { error: { message: string } | null };
     if (errLineas) throw new Error(errLineas.message);
   }
 
@@ -61,20 +63,22 @@ export async function actualizarCotizacion(
   updates: { notas?: string; descuento_pct?: number }
 ) {
   const supabase = await createClient();
-  const { error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
     .from('cotizaciones')
     .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id) as { error: { message: string } | null };
   if (error) throw new Error(error.message);
   revalidatePath(`/superadmin/cotizaciones/${id}`);
 }
 
 export async function cambiarEstadoCotizacion(id: string, estado: string) {
   const supabase = await createClient();
-  const { error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
     .from('cotizaciones')
     .update({ estado, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id) as { error: { message: string } | null };
   if (error) throw new Error(error.message);
   revalidatePath(`/superadmin/cotizaciones/${id}`);
   revalidatePath('/superadmin/cotizaciones');
@@ -82,7 +86,9 @@ export async function cambiarEstadoCotizacion(id: string, estado: string) {
 
 export async function eliminarCotizacion(id: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from('cotizaciones').delete().eq('id', id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
+    .from('cotizaciones').delete().eq('id', id) as { error: { message: string } | null };
   if (error) throw new Error(error.message);
   revalidatePath('/superadmin/cotizaciones');
   redirect('/superadmin/cotizaciones');
@@ -93,10 +99,11 @@ export async function getAgentesDelProyecto(proyecto_id: string): Promise<{
   horas: number;
 }[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase as any)
     .from('tareas')
     .select('agente_asignado, requerimientos!inner(proyecto_id)')
-    .eq('requerimientos.proyecto_id', proyecto_id);
+    .eq('requerimientos.proyecto_id', proyecto_id) as { data: { agente_asignado: string }[] | null };
 
   if (!data) return [];
   const seen = new Set<string>();

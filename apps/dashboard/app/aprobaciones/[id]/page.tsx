@@ -14,11 +14,18 @@ export default async function DetallePage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: solicitud } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: solicitud } = await (supabase as any)
     .from('solicitudes_aprobacion')
     .select('*, aprobaciones(*)')
     .eq('id', id)
-    .single();
+    .single() as {
+      data: {
+        id: string; titulo: string; descripcion: string; area: string; estado: string;
+        plan_detallado: Record<string, unknown>; created_at: string;
+        aprobaciones: { stakeholder_id: string }[]
+      } | null
+    };
 
   if (!solicitud) notFound();
 

@@ -20,26 +20,26 @@ export default async function DetalleCotizacionPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: c } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: c } = await (supabase as any)
     .from('cotizaciones')
-    .select(`
-      id, folio, estado, subtotal, descuento_pct, total, moneda, notas, created_at, updated_at,
-      proyectos(id, nombre),
-      empresas(id, nombre),
-      cotizacion_lineas(id, agente_nombre, descripcion, horas, precio_hora, subtotal, orden)
-    `)
+    .select(`id, folio, estado, subtotal, descuento_pct, total, moneda, notas, created_at, updated_at, proyectos(id, nombre), empresas(id, nombre), cotizacion_lineas(id, agente_nombre, descripcion, horas, precio_hora, subtotal, orden)`)
     .eq('id', id)
-    .single();
+    .single() as {
+      data: {
+        id: string; folio: string; estado: string; subtotal: number | null; descuento_pct: number | null;
+        total: number | null; moneda: string; notas: string | null; created_at: string; updated_at: string;
+        proyectos: { id: string; nombre: string } | null;
+        empresas: { id: string; nombre: string } | null;
+        cotizacion_lineas: { id: string; agente_nombre: string; descripcion: string; horas: number; precio_hora: number; subtotal: number; orden: number }[];
+      } | null
+    };
 
   if (!c) notFound();
 
-  const lineas = ((c.cotizacion_lineas ?? []) as {
-    id: string; agente_nombre: string; descripcion: string;
-    horas: number; precio_hora: number; subtotal: number; orden: number;
-  }[]).sort((a, b) => a.orden - b.orden);
-
-  const proyecto = c.proyectos as { id: string; nombre: string } | null;
-  const empresa  = c.empresas  as { id: string; nombre: string } | null;
+  const lineas = (c.cotizacion_lineas ?? []).sort((a, b) => a.orden - b.orden);
+  const proyecto = c.proyectos;
+  const empresa  = c.empresas;
 
   return (
     <div className="space-y-6 max-w-4xl">

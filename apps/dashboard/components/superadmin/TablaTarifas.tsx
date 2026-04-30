@@ -34,7 +34,7 @@ export default function TablaTarifas({ tarifas }: { tarifas: Tarifa[] }) {
   }
 
   function guardar(nombre: string) {
-    const raw = valores[nombre];
+    const raw = valores[nombre] ?? '';
     const num = parseFloat(raw);
     if (isNaN(num) || num < 0) {
       setErrores(prev => ({ ...prev, [nombre]: 'Valor inválido' }));

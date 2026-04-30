@@ -14,14 +14,13 @@ export default async function CotizacionesPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: cotizaciones } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: cotizaciones } = await (supabase as any)
     .from('cotizaciones')
-    .select(`
-      id, folio, estado, total, moneda, created_at,
-      proyectos(nombre),
-      empresas(nombre)
-    `)
-    .order('created_at', { ascending: false });
+    .select(`id, folio, estado, total, moneda, created_at, proyectos(nombre), empresas(nombre)`)
+    .order('created_at', { ascending: false }) as {
+      data: { id: string; folio: string; estado: string; total: number | null; moneda: string; created_at: string; proyectos: { nombre: string } | null; empresas: { nombre: string } | null }[] | null
+    };
 
   const stats = {
     borrador:  (cotizaciones ?? []).filter(c => c.estado === 'borrador').length,
@@ -86,10 +85,10 @@ export default async function CotizacionesPage() {
                 <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
                   <td className="px-5 py-3 font-mono text-xs text-gray-700">{c.folio}</td>
                   <td className="px-5 py-3 text-gray-800">
-                    {(c.proyectos as { nombre: string } | null)?.nombre ?? <span className="text-gray-400">—</span>}
+                    {c.proyectos?.nombre ?? <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-5 py-3 text-gray-800">
-                    {(c.empresas as { nombre: string } | null)?.nombre ?? <span className="text-gray-400">—</span>}
+                    {c.empresas?.nombre ?? <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-5 py-3 text-right font-semibold text-gray-900 font-mono">
                     ${(c.total ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}

@@ -11,7 +11,7 @@ type RoleTool   = 'clipboard' | 'magnifier' | 'wrench' | 'screwdriver' | 'antenn
 type LoungeAct  = 'playing' | 'sleeping' | 'chatting' | 'drinking' | 'idle';
 
 interface Avatar  { id: string; agente_nombre: string | null; estado_animacion: EstadoAnim }
-interface Entrada { id: string; agente: string; accion: string; creado_en: string }
+interface Entrada { id: string; agente: string; accion: string; creado_en: string; tarea_id?: string | null }
 interface Tarea   { id: string; agente_asignado: string; descripcion: string; estado: string; notas: string | null; plan_ejecucion?: string | null }
 interface Props   { avatoresIniciales: Avatar[]; bitacoraInicial: Entrada[]; tareasIniciales: Tarea[] }
 
@@ -595,10 +595,30 @@ function LoungeDecorations() {
 
 // ── Pasos del plan de ejecución ───────────────────────────────────────────────
 function parsePlanSteps(plan: string): string[] {
-  return plan
+  if (!plan) return [];
+  // Eliminar secciones de encabezado tipo "=== ALGO ==="
+  const sinEncabezados = plan.replace(/^===.*===\s*$/gm, '');
+  return sinEncabezados
     .split('\n')
-    .map(l => l.replace(/^\s*\d+[\.\)]\s*/, '').trim())
-    .filter(l => l.length > 0);
+    .map(l => l.trim())
+    // Aceptar: "1." "1)" "1-" "- " "* " "• " "**1.**" "Paso 1" "Step 1"
+    .filter(l =>
+      /^\d+[\.\)\-]\s+\S/.test(l)        ||
+      /^\*\*\d+[\.\)]\*?\*?\s+\S/.test(l) ||
+      /^[-*•]\s+\S/.test(l)               ||
+      /^Paso\s+\d+/i.test(l)              ||
+      /^Step\s+\d+/i.test(l)
+    )
+    .map(l => l
+      .replace(/^\d+[\.\)\-]\s*/, '')
+      .replace(/^\*\*\d+[\.\)]\*?\*?\s*/, '')
+      .replace(/^[-*•]\s*/, '')
+      .replace(/^Paso\s+\d+[\.\:\-]?\s*/i, '')
+      .replace(/^Step\s+\d+[\.\:\-]?\s*/i, '')
+      .replace(/\*\*/g, '')
+      .trim()
+    )
+    .filter(l => l.length > 4);
 }
 
 // ── Interfaz papel volador ────────────────────────────────────────────────────
@@ -996,11 +1016,13 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
             ) : (
               <div className="space-y-2">
                 {selTareas.slice(0, 8).map(t => {
-                  const steps     = t.plan_ejecucion ? parsePlanSteps(t.plan_ejecucion) : [];
-                  const doneCount = t.estado === 'completada' ? steps.length
-                                  : t.estado === 'en_progreso' ? Math.ceil(steps.length * 0.4)
+                  const steps    = t.plan_ejecucion ? parsePlanSteps(t.plan_ejecucion) : [];
+                  const logCount = bitacora.filter(b => b.tarea_id === t.id).length;
+                  const total    = steps.length || logCount;
+                  const doneCount = t.estado === 'completada' ? total
+                                  : t.estado === 'en_progreso' ? Math.min(logCount, total)
                                   : 0;
-                  const remaining = steps.length - doneCount;
+                  const remaining  = total - doneCount;
                   const isExpanded = expandedTareaId === t.id;
                   return (
                     <div key={t.id}
@@ -1021,11 +1043,11 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                             <p className="text-[10px] capitalize font-medium" style={{
                               color: t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? selCfg.color : '#64748b',
                             }}>{t.estado.replace('_',' ')}</p>
-                            {steps.length > 0 && (
+                            {total > 0 && (
                               <span className="text-[9px]">
                                 <span style={{ color:'#22c55e' }}>✓ {doneCount}</span>
                                 <span className="text-slate-600"> · ⬜ {remaining}</span>
-                                <span className="text-slate-700"> · {steps.length} total</span>
+                                <span className="text-slate-700"> · {total} {steps.length > 0 ? 'pasos' : 'acciones'}</span>
                               </span>
                             )}
                           </div>
@@ -1044,12 +1066,10 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                           {steps.length > 0 && (
                             <div className="space-y-1">
                               {steps.map((step, i) => {
-                                const total = steps.length;
                                 const isCompleted = t.estado === 'completada';
-                                const isActive = t.estado === 'en_progreso';
-                                const threshold = Math.ceil(total * 0.4);
-                                const stepDone = isCompleted || (isActive && i < threshold);
-                                const stepActive = isActive && i === threshold;
+                                const isActive    = t.estado === 'en_progreso';
+                                const stepDone    = isCompleted || (isActive && i < logCount);
+                                const stepActive  = isActive && i === Math.min(logCount, steps.length - 1);
                                 return (
                                   <div key={i} className="flex items-start gap-1.5">
                                     <span className="mt-0.5 shrink-0" style={{ fontSize:10 }}>
@@ -1064,7 +1084,20 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               })}
                             </div>
                           )}
-                          {steps.length === 0 && !t.notas && (
+                          {steps.length === 0 && bitacora.filter(b => b.tarea_id === t.id).length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color:`${selCfg.color}60` }}>
+                                Acciones registradas
+                              </p>
+                              {bitacora.filter(b => b.tarea_id === t.id).slice(0, 10).map((b, i) => (
+                                <div key={i} className="flex items-start gap-1.5">
+                                  <span className="mt-0.5 shrink-0 text-[10px]">✅</span>
+                                  <p className="text-[10px] leading-snug text-slate-400">{b.accion.slice(0, 120)}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {steps.length === 0 && logCount === 0 && !t.notas && (
                             <p className="text-[10px] text-slate-600 italic">Sin detalles adicionales.</p>
                           )}
                         </div>

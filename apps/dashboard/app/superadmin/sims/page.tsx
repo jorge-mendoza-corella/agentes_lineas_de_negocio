@@ -8,9 +8,9 @@ export default async function SimsPage() {
     supabase.from('avatares').select('*'),
     supabase
       .from('bitacora_actividad')
-      .select('id, agente, accion, creado_en')
+      .select('id, agente, accion, creado_en, tarea_id')
       .order('creado_en', { ascending: false })
-      .limit(30),
+      .limit(120),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any)
       .from('tareas')

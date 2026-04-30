@@ -202,6 +202,19 @@ async function handleTool(
       db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', agente),
       db.from('bitacora_actividad').insert({ agente, accion: `🚧 Bloqueante: ${input.problema} — ${input.accion_requerida}`, tarea_id: tareaId }),
     ]);
+    // Notificar al PM responsable (no crítico — fallo silencioso)
+    try {
+      const [{ data: tareaInfo }, { data: primeraEntradaPM }] = await Promise.all([
+        db.from('tareas').select('descripcion').eq('id', tareaId).maybeSingle() as Promise<{ data: { descripcion: string } | null }>,
+        db.from('bitacora_actividad').select('agente').eq('tarea_id', tareaId).like('agente', '%pm%').order('creado_en', { ascending: true }).limit(1).maybeSingle() as Promise<{ data: { agente: string } | null }>,
+      ]);
+      const pmResponsable = primeraEntradaPM?.agente ?? 'pm-global';
+      await db.from('bitacora_actividad').insert({
+        agente: pmResponsable,
+        accion: `🚨 ${agente} reportó un bloqueante.\n• Tarea: ${(tareaInfo?.descripcion ?? '').slice(0, 120)}\n• Problema: ${input.problema}\n• Requiere: ${input.accion_requerida}`,
+        tarea_id: tareaId,
+      });
+    } catch {}
     return { resultado: JSON.stringify({ ok: true }), terminar: true };
   }
 
@@ -317,7 +330,7 @@ async function loopGemini(
 }
 
 // ── Función principal exportada ───────────────────────────────────────────
-export async function ejecutarEspecialista(tareaId: string, db: DB): Promise<void> {
+export async function ejecutarEspecialista(tareaId: string, db: DB, prevContexto?: string): Promise<void> {
   const tieneAnthropic = !!process.env.ANTHROPIC_API_KEY;
   const tieneGemini    = !!process.env.GOOGLE_GEMINI_API_KEY;
 
@@ -352,10 +365,14 @@ export async function ejecutarEspecialista(tareaId: string, db: DB): Promise<voi
     db.from('avatares').update({ estado_animacion: 'trabajando' }).eq('agente_nombre', agente),
     db.from('bitacora_actividad').insert({
       agente,
-      accion: `🤖 Iniciando con ${modelo}: ${descripcion}`,
+      accion: prevContexto ? `⏯️ Reanudando con ${modelo}: ${descripcion}` : `🤖 Iniciando con ${modelo}: ${descripcion}`,
       tarea_id: tareaId,
     }),
   ]);
+
+  const resumptionSection = prevContexto
+    ? `\n## ⏯️ REANUDACIÓN — continúa desde donde te quedaste\n\nFuiste interrumpido. Historial de acciones previas (más reciente primero):\n\n${prevContexto}\n\n> **CRÍTICO**: Analiza el historial. Identifica el último paso completado exitosamente. Comienza desde el SIGUIENTE paso no completado. No repitas pasos ya realizados.\n`
+    : '';
 
   const systemPrompt = `Eres **${agente}**, ${descAgente}.
 
@@ -364,7 +381,7 @@ export async function ejecutarEspecialista(tareaId: string, db: DB): Promise<voi
 
 ## Plan de ejecución
 ${plan}
-
+${resumptionSection}
 ---
 
 ## Herramientas disponibles

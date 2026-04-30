@@ -975,13 +975,13 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                 {avatarPending ? '...' : '🛋️ Enviar a descanso'}
               </button>
             )}
-            {!atDesk(getEstado(selId!)) && getEstado(selId!) !== 'caminando' && selTareas.some(t => t.estado === 'pendiente') && (
+            {!atDesk(getEstado(selId!)) && getEstado(selId!) !== 'caminando' && selTareas.some(t => t.estado === 'pendiente' || t.estado === 'en_progreso') && (
               <button
                 disabled={avatarPending}
                 onClick={() => startAvatar(async () => { await reanudarTrabajo(selId!); })}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
                 style={{ background:`${selCfg.color}18`, color:selCfg.accent, border:`1px solid ${selCfg.color}40`, opacity: avatarPending ? 0.5 : 1 }}>
-                {avatarPending ? '...' : '🚀 Reanudar trabajo'}
+                {avatarPending ? '...' : selTareas.some(t => t.estado === 'en_progreso') ? '⏯️ Retomar trabajo' : '🚀 Reanudar trabajo'}
               </button>
             )}
           </div>

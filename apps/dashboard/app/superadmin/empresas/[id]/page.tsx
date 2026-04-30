@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import GestionEmpresa from '@/components/superadmin/GestionEmpresa';
-import PanelContratosEmpresa from '@/components/superadmin/PanelContratosEmpresa';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -11,38 +10,26 @@ export default async function EmpresaDetallePage({ params }: Props) {
   const { id } = await params;
   const supabase = await createClient();
 
+  type ModuloRow = { id: string; nombre: string; icono: string | null };
+  type ModuloActivoRow = { id: string; modulo_id: string; activo: boolean };
+  type ModuloServicioRow = { modulo_id: string; servicio_id: string };
+
   const [
     { data: empresa },
-    { data: serviciosOld },
+    { data: modulosActivos },
+    { data: todosModulos },
     { data: usuarios },
-    { data: servicios },
-    { data: contratos },
-    { data: tarifasGlobales },
-    { data: tarifasEmpresa },
-    { data: cotizaciones },
+    moduloServiciosRes,
   ] = await Promise.all([
     supabase.from('empresas').select('*').eq('id', id).single(),
-    supabase.from('empresa_servicios').select('*').eq('empresa_id', id),
+    supabase.from('empresa_servicios').select('id, modulo_id, activo').eq('empresa_id', id),
+    supabase.from('catalogo_modulos').select('id, nombre, icono').eq('activo', true).order('orden'),
     supabase.from('perfiles').select('*, stakeholder_areas(area)').eq('empresa_id', id).order('rol'),
-    supabase.from('servicios').select('*, servicio_agentes(agente_nombre, tarifa_hora)').order('nombre'),
-    supabase.from('empresa_contratos').select('*').eq('empresa_id', id),
-    supabase.from('tarifas_agentes').select('agente_nombre, display_name, tarifa_hora').order('area'),
-    supabase.from('empresa_agente_tarifas').select('*').eq('empresa_id', id),
-    supabase.from('cotizaciones').select('total, estado').eq('empresa_id', id),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).from('modulo_servicios').select('modulo_id, servicio_id'),
   ]);
 
   if (!empresa) notFound();
-
-  const serviciosConAgentes = (servicios ?? []).map(s => ({
-    id: s.id,
-    nombre: s.nombre,
-    icono: s.icono,
-    descripcion: s.descripcion,
-    agentes: (s.servicio_agentes ?? []).map((a: { agente_nombre: string; tarifa_hora: number | null }) => ({
-      agente_nombre: a.agente_nombre,
-      tarifa_hora: a.tarifa_hora,
-    })),
-  }));
 
   return (
     <div className="space-y-8">
@@ -52,19 +39,13 @@ export default async function EmpresaDetallePage({ params }: Props) {
         </a>
       </div>
 
-      <GestionEmpresa empresa={empresa} servicios={serviciosOld ?? []} usuarios={usuarios ?? []} />
-
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Facturación y servicios</h2>
-        <PanelContratosEmpresa
-          empresa_id={id}
-          servicios={serviciosConAgentes}
-          contratos={contratos ?? []}
-          tarifasGlobales={tarifasGlobales ?? []}
-          tarifasEmpresa={tarifasEmpresa ?? []}
-          cotizaciones={cotizaciones ?? []}
-        />
-      </div>
+      <GestionEmpresa
+        empresa={empresa}
+        modulos={(todosModulos ?? []) as ModuloRow[]}
+        modulosActivos={(modulosActivos ?? []) as ModuloActivoRow[]}
+        moduloServicios={(moduloServiciosRes.data ?? []) as ModuloServicioRow[]}
+        usuarios={usuarios ?? []}
+      />
     </div>
   );
 }

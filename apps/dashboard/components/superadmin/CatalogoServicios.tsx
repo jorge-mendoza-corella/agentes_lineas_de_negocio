@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { AGENTES_META, agenteLabel } from '@/lib/agentes-meta';
 import { setAgentesServicio } from '@/lib/actions/servicios';
+import { crearServicio } from '@/lib/actions/modulos';
 
 interface AgenteServicio {
   agente_nombre: string;
@@ -39,6 +40,10 @@ export default function CatalogoServicios({ servicios, tarifas }: Props) {
   const [editando, setEditando] = useState<string | null>(null);
   const [agentesEdit, setAgentesEdit] = useState<AgenteEdit[]>([]);
   const [isPending, startTransition] = useTransition();
+  const [nuevoForm, setNuevoForm] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevoIcono, setNuevoIcono] = useState('');
+  const [nuevoDescripcion, setNuevoDescripcion] = useState('');
 
   const globalMap = Object.fromEntries(tarifas.map(t => [t.agente_nombre, t.tarifa_hora]));
 
@@ -90,8 +95,71 @@ export default function CatalogoServicios({ servicios, tarifas }: Props) {
     });
   }
 
+  function handleCrearServicio(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nuevoNombre.trim()) return;
+    startTransition(async () => {
+      await crearServicio(nuevoNombre, nuevoIcono, nuevoDescripcion);
+      setNuevoNombre(''); setNuevoIcono(''); setNuevoDescripcion('');
+      setNuevoForm(false);
+      window.location.reload();
+    });
+  }
+
   return (
     <div className="space-y-4">
+      {/* Botón y form nuevo servicio */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setNuevoForm(v => !v)}
+          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
+        >
+          {nuevoForm ? 'Cancelar' : '+ Nuevo servicio'}
+        </button>
+      </div>
+      {nuevoForm && (
+        <form onSubmit={handleCrearServicio} className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-gray-800">Nuevo servicio</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
+              <input
+                required
+                value={nuevoNombre}
+                onChange={e => setNuevoNombre(e.target.value)}
+                placeholder="ej: Desarrollo de software"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Icono (emoji)</label>
+              <input
+                value={nuevoIcono}
+                onChange={e => setNuevoIcono(e.target.value)}
+                placeholder="ej: 💻"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
+              <input
+                value={nuevoDescripcion}
+                onChange={e => setNuevoDescripcion(e.target.value)}
+                placeholder="Descripción breve"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {isPending ? 'Creando...' : 'Crear servicio'}
+          </button>
+        </form>
+      )}
+
       {servicios.map(s => {
         const estaEditando = editando === s.id;
         const agentesActuales = s.agentes;

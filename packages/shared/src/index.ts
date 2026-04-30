@@ -29,15 +29,14 @@ export type EstadoAnimacion =
   | 'celebrando';
 
 // Multi-empresa
-export type ServicioEmpresa =
-  | 'desarrollo'
-  | 'finanzas'
-  | 'contabilidad'
-  | 'marketing'
-  | 'cobranza'
-  | 'escrituracion'
-  | 'postventa'
-  | 'rrhh';
+export interface CatalogoModulo extends Identificable {
+  nombre: string;
+  descripcion: string | null;
+  icono: string | null;
+  activo: boolean;
+  orden: number;
+  creado_en: string;
+}
 
 export interface Empresa extends Identificable {
   nombre: string;
@@ -50,7 +49,7 @@ export interface Empresa extends Identificable {
 
 export interface EmpresaServicio extends Identificable {
   empresa_id: string;
-  servicio: ServicioEmpresa;
+  modulo_id: string;
   activo: boolean;
   created_at: string;
 }

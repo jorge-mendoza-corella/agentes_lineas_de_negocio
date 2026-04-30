@@ -480,27 +480,55 @@ export type Database = {
           },
         ]
       }
+      catalogo_modulos: {
+        Row: {
+          id: string
+          nombre: string
+          descripcion: string | null
+          icono: string | null
+          activo: boolean
+          orden: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          nombre: string
+          descripcion?: string | null
+          icono?: string | null
+          activo?: boolean
+          orden?: number
+          creado_en?: string
+        }
+        Update: {
+          nombre?: string
+          descripcion?: string | null
+          icono?: string | null
+          activo?: boolean
+          orden?: number
+        }
+        Relationships: []
+      }
       empresa_servicios: {
         Row: {
           activo: boolean
           created_at: string
           empresa_id: string
           id: string
-          servicio: string
+          modulo_id: string
         }
         Insert: {
           activo?: boolean
           created_at?: string
           empresa_id: string
           id?: string
-          servicio: string
+          modulo_id: string
         }
         Update: {
           activo?: boolean
           created_at?: string
           empresa_id?: string
           id?: string
-          servicio?: string
+          modulo_id?: string
         }
         Relationships: [
           {
@@ -508,6 +536,43 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empresa_servicios_modulo_id_fkey"
+            columns: ["modulo_id"]
+            isOneToOne: false
+            referencedRelation: "catalogo_modulos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      modulo_servicios: {
+        Row: {
+          modulo_id: string
+          servicio_id: string
+        }
+        Insert: {
+          modulo_id: string
+          servicio_id: string
+        }
+        Update: {
+          modulo_id?: string
+          servicio_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modulo_servicios_modulo_id_fkey"
+            columns: ["modulo_id"]
+            isOneToOne: false
+            referencedRelation: "catalogo_modulos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "modulo_servicios_servicio_id_fkey"
+            columns: ["servicio_id"]
+            isOneToOne: false
+            referencedRelation: "servicios"
             referencedColumns: ["id"]
           },
         ]

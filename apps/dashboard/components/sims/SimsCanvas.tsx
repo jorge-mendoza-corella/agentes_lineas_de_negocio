@@ -996,7 +996,11 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
             ) : (
               <div className="space-y-2">
                 {selTareas.slice(0, 8).map(t => {
-                  const steps = t.plan_ejecucion ? parsePlanSteps(t.plan_ejecucion) : [];
+                  const steps     = t.plan_ejecucion ? parsePlanSteps(t.plan_ejecucion) : [];
+                  const doneCount = t.estado === 'completada' ? steps.length
+                                  : t.estado === 'en_progreso' ? Math.ceil(steps.length * 0.4)
+                                  : 0;
+                  const remaining = steps.length - doneCount;
                   const isExpanded = expandedTareaId === t.id;
                   return (
                     <div key={t.id}
@@ -1018,7 +1022,11 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               color: t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? selCfg.color : '#64748b',
                             }}>{t.estado.replace('_',' ')}</p>
                             {steps.length > 0 && (
-                              <span className="text-[9px] text-slate-600">· {steps.length} pasos</span>
+                              <span className="text-[9px]">
+                                <span style={{ color:'#22c55e' }}>✓ {doneCount}</span>
+                                <span className="text-slate-600"> · ⬜ {remaining}</span>
+                                <span className="text-slate-700"> · {steps.length} total</span>
+                              </span>
                             )}
                           </div>
                         </div>

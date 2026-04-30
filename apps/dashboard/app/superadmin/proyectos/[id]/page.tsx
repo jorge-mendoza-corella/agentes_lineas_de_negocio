@@ -38,7 +38,7 @@ export default async function ProyectoDetallePage({ params }: Props) {
       .select('id, agente, accion, creado_en, tarea_id')
       .eq('proyecto_id', id)
       .order('creado_en', { ascending: false })
-      .limit(30),
+      .limit(300),
   ]);
 
   if (!proyectoRes.data) notFound();
@@ -60,7 +60,27 @@ export default async function ProyectoDetallePage({ params }: Props) {
   }
   function parsePasos(plan: string | null): string[] {
     if (!plan) return [];
-    return plan.split('\n').map((l: string) => l.replace(/^\s*\d+[\.\)]\s*/, '').trim()).filter((l: string) => l.length > 0 && !l.startsWith('==='));
+    const sinEncabezados = plan.replace(/^===.*===\s*$/gm, '');
+    return sinEncabezados
+      .split('\n')
+      .map((l: string) => l.trim())
+      .filter((l: string) =>
+        /^\d+[\.\)\-]\s+\S/.test(l) ||
+        /^\*\*\d+[\.\)]\*?\*?\s+\S/.test(l) ||
+        /^[-*•]\s+\S/.test(l) ||
+        /^Paso\s+\d+/i.test(l) ||
+        /^Step\s+\d+/i.test(l)
+      )
+      .map((l: string) => l
+        .replace(/^\d+[\.\)\-]\s*/, '')
+        .replace(/^\*\*\d+[\.\)]\*?\*?\s*/, '')
+        .replace(/^[-*•]\s*/, '')
+        .replace(/^Paso\s+\d+[\.\:\-]?\s*/i, '')
+        .replace(/^Step\s+\d+[\.\:\-]?\s*/i, '')
+        .replace(/\*\*/g, '')
+        .trim()
+      )
+      .filter((l: string) => l.length > 4);
   }
 
   return (
@@ -119,75 +139,114 @@ export default async function ProyectoDetallePage({ params }: Props) {
             </div>
           </div>
           <div className="divide-y divide-gray-50">
-            {tareasDirectas.map(t => (
-              <div key={t.id} className="px-6 py-4">
-                <div className="flex items-start gap-3">
-                  <span className="text-xl shrink-0 mt-0.5">{AGENTE_EMOJI[t.agente_asignado] ?? '🤖'}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-semibold text-gray-500">{t.agente_asignado}</span>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${ESTADO_BADGE[t.estado] ?? 'bg-gray-100 text-gray-500'}`}>
-                        {t.estado.replace('_', ' ')}
-                      </span>
-                      {(t.estado === 'pendiente' || t.estado === 'cancelada') && (
-                        <BtnReejecutar tareaId={t.id} />
+            {tareasDirectas.map(t => {
+              const pasos     = parsePasos(t.plan_ejecucion);
+              const logCount  = bitacora.filter((b: any) => b.tarea_id === t.id).length;
+              const total     = pasos.length || logCount;
+              const doneCount = t.estado === 'completada' ? total
+                              : Math.min(logCount, total);
+              const pct       = total > 0 ? Math.round(doneCount / total * 100) : 0;
+              const remaining = total - doneCount;
+
+              return (
+                <div key={t.id} className="px-6 py-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl shrink-0 mt-0.5">{AGENTE_EMOJI[t.agente_asignado] ?? '🤖'}</span>
+                    <div className="flex-1 min-w-0">
+
+                      {/* Cabecera */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-gray-500">{t.agente_asignado}</span>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${ESTADO_BADGE[t.estado] ?? 'bg-gray-100 text-gray-500'}`}>
+                          {t.estado.replace('_', ' ')}
+                        </span>
+                        {(t.estado === 'pendiente' || t.estado === 'cancelada') && (
+                          <BtnReejecutar tareaId={t.id} />
+                        )}
+                      </div>
+                      <p className="text-sm font-medium text-gray-800 mt-0.5 leading-snug">{t.descripcion}</p>
+
+                      {/* Barra de progreso por pasos */}
+                      {total > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${pct}%`,
+                                  background: t.estado === 'completada' ? '#22c55e'
+                                            : t.estado === 'en_progreso' ? '#3b82f6'
+                                            : doneCount > 0 ? '#f59e0b'
+                                            : '#d1d5db',
+                                }}
+                              />
+                            </div>
+                            <span className="text-[11px] font-semibold text-gray-600 shrink-0">{pct}%</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px]">
+                            {doneCount > 0 && <span className="text-green-600 font-medium">✅ {doneCount} completados</span>}
+                            {remaining > 0 && <span className="text-gray-400">⬜ {remaining} pendientes</span>}
+                            <span className="text-gray-300">· {total} {pasos.length > 0 ? 'pasos' : 'acciones'} total</span>
+                          </div>
+                        </div>
                       )}
-                    </div>
-                    <p className="text-sm font-medium text-gray-800 mt-0.5 leading-snug">{t.descripcion}</p>
-                    {t.plan_ejecucion && (
-                      t.estado === 'en_progreso' || t.estado === 'completada' ? (
-                        <div className="mt-2">
-                          <p className="text-[10px] text-indigo-500 font-semibold uppercase tracking-wider mb-1.5">Plan de ejecución</p>
-                          <div className="space-y-1">
-                            {parsePasos(t.plan_ejecucion).slice(0, 12).map((paso: string, i: number) => {
-                              const pasos = parsePasos(t.plan_ejecucion);
+
+                      {/* Checklist del plan */}
+                      {pasos.length > 0 && (
+                        <details className="mt-2" open={t.estado === 'en_progreso' || t.estado === 'completada'}>
+                          <summary className="text-[10px] text-indigo-500 font-semibold uppercase tracking-wider cursor-pointer select-none hover:text-indigo-700">
+                            Plan de ejecución — {pasos.length} pasos
+                          </summary>
+                          <div className="mt-2 space-y-1 border-l-2 border-indigo-50 pl-3">
+                            {pasos.map((paso: string, i: number) => {
                               const isCompleted = t.estado === 'completada';
-                              const threshold = Math.ceil(pasos.length * 0.45);
-                              const done = isCompleted || (t.estado === 'en_progreso' && i < threshold);
-                              const active = t.estado === 'en_progreso' && i === threshold;
+                              const isActive    = t.estado === 'en_progreso';
+                              const stepDone    = isCompleted || i < doneCount;
+                              const stepActive  = (isActive || t.estado === 'pendiente') && i === Math.min(doneCount, pasos.length - 1) && doneCount < pasos.length;
                               return (
                                 <div key={i} className="flex items-start gap-1.5">
-                                  <span className="text-[10px] shrink-0 mt-0.5">{done ? '✅' : active ? '🔵' : '⚪'}</span>
-                                  <p className={`text-[11px] leading-snug ${done ? 'line-through text-gray-400' : active ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
+                                  <span className="text-[10px] shrink-0 mt-0.5">
+                                    {stepDone ? '✅' : stepActive ? '🔵' : '⚪'}
+                                  </span>
+                                  <p className={`text-[11px] leading-snug ${
+                                    stepDone   ? 'line-through text-gray-300'
+                                    : stepActive ? 'text-blue-700 font-semibold'
+                                    : 'text-gray-500'
+                                  }`}>
+                                    <span className="text-[9px] text-gray-300 mr-1">{i + 1}.</span>
                                     {paso}
                                   </p>
                                 </div>
                               );
                             })}
                           </div>
-                        </div>
-                      ) : (
-                        <details className="mt-2">
-                          <summary className="text-xs text-indigo-600 cursor-pointer hover:text-indigo-800 select-none">
-                            Ver plan de ejecución
-                          </summary>
-                          <pre className="mt-2 text-xs text-gray-600 bg-gray-50 rounded-lg p-3 whitespace-pre-wrap leading-relaxed border border-gray-100">
-                            {t.plan_ejecucion}
-                          </pre>
                         </details>
-                      )
-                    )}
-                    {/* Indicador de estancamiento */}
-                    {isStalled(t) && (
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                          ⚠️ Sin actividad {Math.floor((Date.now() - new Date(t.iniciado_en).getTime()) / 60000)} min
-                        </span>
-                        <BtnDiagnosticar tareaId={t.id} />
-                      </div>
-                    )}
-                    {t.notas && (
-                      <p className="text-xs text-gray-500 mt-1 italic leading-snug">{t.notas}</p>
-                    )}
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      {new Date(t.creado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
-                      {t.iniciado_en && ` · Iniciada ${new Date(t.iniciado_en).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`}
-                      {t.completado_en && ` · Completada ${new Date(t.completado_en).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`}
-                    </p>
+                      )}
+
+                      {/* Indicador de estancamiento */}
+                      {isStalled(t) && (
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                            ⚠️ Sin actividad {Math.floor((Date.now() - new Date(t.iniciado_en).getTime()) / 60000)} min
+                          </span>
+                          <BtnDiagnosticar tareaId={t.id} />
+                        </div>
+                      )}
+
+                      {t.notas && (
+                        <p className="text-xs text-gray-500 mt-1 italic leading-snug border-l-2 border-gray-200 pl-2">{t.notas}</p>
+                      )}
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {new Date(t.creado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
+                        {t.iniciado_en && ` · Iniciada ${new Date(t.iniciado_en).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`}
+                        {t.completado_en && ` · Completada ${new Date(t.completado_en).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

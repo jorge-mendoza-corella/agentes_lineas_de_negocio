@@ -4,13 +4,39 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { ejecutarEspecialista, makeDb } from '@/lib/agent/especialista';
 
+// ── Parser de pasos del plan (server-side) ───────────────────────────────────
+function _parsePasos(plan: string): string[] {
+  if (!plan) return [];
+  const sinEncabezados = plan.replace(/^===.*===\s*$/gm, '');
+  return sinEncabezados
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l =>
+      /^\d+[\.\)\-]\s+\S/.test(l) ||
+      /^\*\*\d+[\.\)]\*?\*?\s+\S/.test(l) ||
+      /^[-*•]\s+\S/.test(l) ||
+      /^Paso\s+\d+/i.test(l) ||
+      /^Step\s+\d+/i.test(l)
+    )
+    .map(l => l
+      .replace(/^\d+[\.\)\-]\s*/, '')
+      .replace(/^\*\*\d+[\.\)]\*?\*?\s*/, '')
+      .replace(/^[-*•]\s*/, '')
+      .replace(/^Paso\s+\d+[\.\:\-]?\s*/i, '')
+      .replace(/^Step\s+\d+[\.\:\-]?\s*/i, '')
+      .replace(/\*\*/g, '')
+      .trim()
+    )
+    .filter(l => l.length > 4);
+}
+
 // ── Helper interno: reanuda un agente sin chequeo PM ─────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function _reanudarAgente(agenteNombre: string, db: any): Promise<boolean> {
   // Priorizar tarea en_progreso (fue interrumpida) sobre pendiente
   const { data: tareasActivas } = await db
     .from('tareas')
-    .select('id, descripcion, estado')
+    .select('id, descripcion, estado, plan_ejecucion')
     .eq('agente_asignado', agenteNombre)
     .in('estado', ['en_progreso', 'pendiente'])
     .order('creado_en', { ascending: true })
@@ -26,20 +52,41 @@ async function _reanudarAgente(agenteNombre: string, db: any): Promise<boolean> 
   let prevContexto: string | undefined;
 
   if (tarea.estado === 'en_progreso') {
-    // Cargar historial para que el agente sepa dónde quedó
+    // Cargar historial en orden cronológico para identificar el último paso
     const { data: bitacora } = await db
       .from('bitacora_actividad')
       .select('agente, accion, creado_en')
       .eq('tarea_id', tarea.id)
-      .order('creado_en', { ascending: false })
-      .limit(15);
+      .order('creado_en', { ascending: true })
+      .limit(40);
 
-    if (bitacora && (bitacora as any[]).length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      prevContexto = (bitacora as any[])
-        .map(b => `[${new Date(b.creado_en).toLocaleTimeString('es-MX')}] ${(b.accion as string).slice(0, 300)}`)
-        .join('\n');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entradas: any[] = (bitacora as any[] | null) ?? [];
+    const logCount   = entradas.length;
+    const planSteps  = _parsePasos(tarea.plan_ejecucion ?? '');
+    const totalSteps = planSteps.length;
+
+    // Determinar el siguiente paso concreto
+    const nextIdx    = Math.min(logCount, totalSteps > 0 ? totalSteps - 1 : 0);
+    const nextStep   = totalSteps > 0 ? planSteps[nextIdx] : null;
+
+    const historial = entradas
+      .map(b => `  [${new Date(b.creado_en).toLocaleTimeString('es-MX')}] ${(b.accion as string).slice(0, 250)}`)
+      .join('\n');
+
+    const lineas = [
+      '=== CONTEXTO DE REANUDACIÓN ===',
+      `Fuiste interrumpido. Progreso estimado: ${logCount}${totalSteps > 0 ? `/${totalSteps}` : ''} pasos.`,
+    ];
+    if (nextStep) {
+      lineas.push(`PRÓXIMO PASO A EJECUTAR — Paso ${nextIdx + 1}: "${nextStep}"`);
+      lineas.push('Comienza DIRECTAMENTE desde ese paso. No repitas lo que ya está en el historial.');
     }
+    lineas.push('', 'Historial de acciones realizadas (cronológico):');
+    lineas.push(historial || '  (Sin historial)');
+    lineas.push('=== FIN CONTEXTO ===');
+
+    prevContexto = lineas.join('\n');
 
     // Resetear a pendiente para que ejecutarEspecialista lo marque en_progreso correctamente
     await db.from('tareas')

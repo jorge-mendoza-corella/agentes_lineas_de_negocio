@@ -10,7 +10,7 @@ export default function NavSuperadmin({ nombre }: Props) {
   return (
     <aside className="w-56 min-h-screen bg-gray-900 text-white flex flex-col">
       <div className="px-5 py-6 border-b border-gray-700">
-        <p className="text-xs text-gray-400 uppercase tracking-wider">Área de Sistemas</p>
+        <p className="text-xs text-gray-400 uppercase tracking-wider">Servicios Agénticos</p>
         <p className="text-sm font-semibold mt-1 truncate">{nombre}</p>
         <span className="inline-block mt-1 px-2 py-0.5 bg-yellow-500 text-yellow-900 text-xs rounded-full font-bold">
           Superadmin

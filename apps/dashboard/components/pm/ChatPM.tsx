@@ -2,6 +2,16 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+
+interface Adjunto {
+  id: string;
+  tipo: 'imagen' | 'documento' | 'audio' | 'video';
+  nombre: string;
+  mimeType: string;
+  base64: string;
+  preview?: string;
+}
 
 interface MensajeUI {
   id: string;
@@ -9,6 +19,7 @@ interface MensajeUI {
   contenido: string;
   pendiente?: boolean;
   esAudio?: boolean;
+  adjuntos?: Array<{ tipo: string; preview?: string; nombre: string }>;
 }
 
 interface ToolEvent {
@@ -90,6 +101,47 @@ function stopSpeaking() {
   window.speechSynthesis.cancel();
 }
 
+// SVG logo de Anthropic (triángulo estilizado)
+function LogoClaude() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M13.827 3.094c-.407-1.126-2.038-1.126-2.446 0L4.733 19.64c-.327.906.374 1.86 1.307 1.86h1.366c.526 0 .994-.334 1.168-.832L9.7 17.45h4.6l1.126 3.218c.174.498.642.832 1.168.832h1.366c.933 0 1.634-.954 1.307-1.86L13.827 3.094zm-2.96 10.622 1.133-3.237 1.133 3.237H10.867z"/>
+    </svg>
+  );
+}
+
+// SVG logo de Gemini (estrella de 4 puntas)
+function LogoGemini() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C12 6.627 6.627 12 0 12c6.627 0 12 5.373 12 12 0-6.627 5.373-12 12-12-6.627 0-12-5.373-12-12z"/>
+    </svg>
+  );
+}
+
+function ModelBadge({ modelo, fallback }: { modelo: string | null; fallback: boolean }) {
+  if (!modelo) return null;
+  const isClaude = modelo.includes('claude');
+  return (
+    <span
+      title={fallback ? 'Gemini activado como modelo de respaldo (Anthropic no disponible)' : isClaude ? 'Claude Sonnet 4.6 — Anthropic (primario)' : 'Gemini 2.5 Flash — Google'}
+      className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full font-medium select-none ${
+        isClaude
+          ? 'bg-orange-50 text-orange-700 border border-orange-200'
+          : fallback
+          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+          : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+      }`}
+    >
+      {isClaude ? <LogoClaude /> : <LogoGemini />}
+      {isClaude ? 'Claude Sonnet' : 'Gemini Flash'}
+      {fallback && (
+        <span className="text-[9px] opacity-70 font-normal">· fallback</span>
+      )}
+    </span>
+  );
+}
+
 export default function ChatPM({
   conversacionIdInicial,
   mensajesIniciales,
@@ -126,6 +178,10 @@ export default function ChatPM({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [modeloActivo, setModeloActivo] = useState<string | null>(null);
+  const [esFallback, setEsFallback] = useState(false);
+  const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const supported = typeof window !== 'undefined' &&
@@ -232,6 +288,7 @@ export default function ChatPM({
     if (isStreaming) return;
     setIsStreaming(true);
     setToolEvents([]);
+    setEsFallback(false);
     stopSpeaking();
     setSpeakingId(null);
 
@@ -276,7 +333,16 @@ export default function ChatPM({
           if (!line.trim()) continue;
           try {
             const ev = JSON.parse(line);
-            if (ev.type === 'init') { nuevaConvId = ev.conversacion_id; setConversacionId(ev.conversacion_id); }
+            if (ev.type === 'init') {
+              nuevaConvId = ev.conversacion_id;
+              setConversacionId(ev.conversacion_id);
+              if (ev.modelo) setModeloActivo(ev.modelo);
+            }
+            if (ev.type === 'model_switch') {
+              setModeloActivo(ev.modelo);
+              setEsFallback(true);
+            }
+            if (ev.type === 'done' && ev.modelo) setModeloActivo(ev.modelo);
             if (ev.type === 'transcript') {
               setMensajes(prev => prev.map(m =>
                 m.id === idUsuario ? { ...m, contenido: `🎤 ${ev.texto}` } : m
@@ -310,10 +376,12 @@ export default function ChatPM({
           } catch { /* línea malformada */ }
         }
       }
-    } catch {
+    } catch (err) {
+      console.error('[ChatPM] enviarAudio error:', err);
+      const msg = err instanceof Error ? err.message : 'Error de conexión con el agente.';
       setMensajes(prev => prev.map(m =>
         m.id === idAgente
-          ? { ...m, contenido: '⚠️ Error de conexión con el agente.', pendiente: false }
+          ? { ...m, contenido: `⚠️ ${msg}`, pendiente: false }
           : m
       ));
     } finally {
@@ -327,10 +395,13 @@ export default function ChatPM({
 
   async function enviar() {
     const texto = input.trim();
-    if (!texto || isStreaming) return;
+    if ((!texto && adjuntos.length === 0) || isStreaming) return;
+    const adjuntosActuales = [...adjuntos];
     setInput('');
+    setAdjuntos([]);
     setIsStreaming(true);
     setToolEvents([]);
+    setEsFallback(false);
     stopSpeaking();
     setSpeakingId(null);
 
@@ -339,7 +410,7 @@ export default function ChatPM({
 
     setMensajes(prev => [
       ...prev,
-      { id: idUsuario, rol: 'usuario', contenido: texto },
+      { id: idUsuario, rol: 'usuario', contenido: texto, adjuntos: adjuntosActuales.map(a => ({ tipo: a.tipo, preview: a.preview, nombre: a.nombre })) },
       { id: idAgente, rol: 'agente', contenido: '', pendiente: true },
     ]);
 
@@ -349,6 +420,7 @@ export default function ChatPM({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mensaje: texto,
+          adjuntos: adjuntosActuales.length > 0 ? adjuntosActuales.map(a => ({ tipo: a.tipo, nombre: a.nombre, mimeType: a.mimeType, base64: a.base64 })) : undefined,
           conversacion_id: conversacionId ?? undefined,
           empresa_id: empresaId ?? undefined,
           proyecto_id: proyectoId ?? undefined,
@@ -376,7 +448,13 @@ export default function ChatPM({
             if (ev.type === 'init') {
               nuevaConvId = ev.conversacion_id;
               setConversacionId(ev.conversacion_id);
+              if (ev.modelo) setModeloActivo(ev.modelo);
             }
+            if (ev.type === 'model_switch') {
+              setModeloActivo(ev.modelo);
+              setEsFallback(true);
+            }
+            if (ev.type === 'done' && ev.modelo) setModeloActivo(ev.modelo);
             if (ev.type === 'text') {
               setMensajes(prev => prev.map(m =>
                 m.id === idAgente ? { ...m, contenido: m.contenido + ev.delta } : m
@@ -405,10 +483,12 @@ export default function ChatPM({
           } catch { /* línea malformada */ }
         }
       }
-    } catch {
+    } catch (err) {
+      console.error('[ChatPM] enviar error:', err);
+      const msg = err instanceof Error ? err.message : 'Error de conexión con el agente.';
       setMensajes(prev => prev.map(m =>
         m.id === idAgente
-          ? { ...m, contenido: '⚠️ Error de conexión con el agente.', pendiente: false }
+          ? { ...m, contenido: `⚠️ ${msg}`, pendiente: false }
           : m
       ));
     } finally {
@@ -418,6 +498,46 @@ export default function ChatPM({
       ));
       textareaRef.current?.focus();
     }
+  }
+
+  async function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = Array.from(e.clipboardData.items);
+    const imageItems = items.filter(i => i.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+    e.preventDefault();
+    for (const item of imageItems) {
+      const blob = item.getAsFile();
+      if (!blob) continue;
+      const base64 = await blobToBase64(blob);
+      setAdjuntos(prev => [...prev, {
+        id: crypto.randomUUID(),
+        tipo: 'imagen',
+        nombre: `imagen.${item.type.split('/')[1] || 'png'}`,
+        mimeType: item.type,
+        base64,
+        preview: URL.createObjectURL(blob),
+      }]);
+    }
+  }
+
+  async function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    for (const file of files) {
+      const base64 = await blobToBase64(file);
+      const tipo: Adjunto['tipo'] = file.type.startsWith('image/') ? 'imagen'
+        : file.type.startsWith('audio/') ? 'audio'
+        : file.type.startsWith('video/') ? 'video'
+        : 'documento';
+      setAdjuntos(prev => [...prev, {
+        id: crypto.randomUUID(),
+        tipo,
+        nombre: file.name,
+        mimeType: file.type,
+        base64,
+        preview: tipo === 'imagen' ? URL.createObjectURL(file) : undefined,
+      }]);
+    }
+    e.target.value = '';
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -434,9 +554,17 @@ export default function ChatPM({
         <span className="text-xl">🎯</span>
         <div>
           <p className="text-sm font-semibold text-gray-900">PM Global</p>
-          <p className="text-xs text-gray-500">Project Manager del Área de Sistemas</p>
+          <p className="text-xs text-gray-500">Project Manager de Servicios Agénticos</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <ModelBadge modelo={modeloActivo} fallback={esFallback} />
+          <Link
+            href="/superadmin/sims"
+            title="Ver estado de los agentes en tiempo real"
+            className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors font-medium"
+          >
+            <span>🏢</span> Agentes
+          </Link>
           {isRecording && (
             <span className="flex items-center gap-1.5 text-xs text-red-600 font-medium">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block" />
@@ -504,6 +632,20 @@ export default function ChatPM({
                     : 'bg-gray-100 text-gray-800 rounded-tl-sm'
                 }`}
               >
+                {m.adjuntos && m.adjuntos.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {m.adjuntos.map((a, i) =>
+                      a.tipo === 'imagen' && a.preview ? (
+                        <img key={i} src={a.preview} alt={a.nombre} className="max-w-[180px] max-h-[120px] object-cover rounded-lg" />
+                      ) : (
+                        <div key={i} className="flex items-center gap-1 bg-white/20 rounded-lg px-2 py-0.5">
+                          <span className="text-xs">{a.tipo === 'audio' ? '🎵' : a.tipo === 'video' ? '🎬' : '📄'}</span>
+                          <span className="text-xs opacity-80 max-w-[120px] truncate">{a.nombre}</span>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
                 <pre className="whitespace-pre-wrap font-sans">{m.contenido}</pre>
                 {m.pendiente && m.contenido === '' && (
                   <span className="inline-flex gap-1">
@@ -557,21 +699,19 @@ export default function ChatPM({
       {/* Input */}
       <div className="px-4 py-3 border-t border-gray-100">
         {/* Selector empresa/proyecto — solo en nueva conversación */}
-        {!conversacionId && (empresas.length > 0 || proyectos.length > 0) && (
+        {!conversacionId && empresas.length > 0 && (
           <div className="flex gap-2 mb-2">
-            {empresas.length > 0 && (
-              <select
-                value={empresaId ?? ''}
-                onChange={e => { setEmpresaId(e.target.value || null); setProyectoId(null); }}
-                className="flex-1 text-xs rounded-lg border border-gray-200 px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">🏢 Empresa (opcional)</option>
-                {empresas.map(e => (
-                  <option key={e.id} value={e.id}>{e.nombre}</option>
-                ))}
-              </select>
-            )}
-            {proyectos.length > 0 && (
+            <select
+              value={empresaId ?? ''}
+              onChange={e => { setEmpresaId(e.target.value || null); setProyectoId(null); }}
+              className="flex-1 text-xs rounded-lg border border-gray-200 px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">🏢 Selecciona empresa</option>
+              {empresas.map(e => (
+                <option key={e.id} value={e.id}>{e.nombre}</option>
+              ))}
+            </select>
+            {empresaId && proyectos.filter(p => p.empresa_id === empresaId).length > 0 && (
               <select
                 value={proyectoId ?? ''}
                 onChange={e => setProyectoId(e.target.value || null)}
@@ -579,7 +719,7 @@ export default function ChatPM({
               >
                 <option value="">📁 Proyecto (opcional)</option>
                 {proyectos
-                  .filter(p => !empresaId || !p.empresa_id || p.empresa_id === empresaId)
+                  .filter(p => p.empresa_id === empresaId)
                   .map(p => (
                     <option key={p.id} value={p.id}>{p.nombre}</option>
                   ))}
@@ -588,18 +728,61 @@ export default function ChatPM({
           </div>
         )}
 
+        {adjuntos.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {adjuntos.map(a => (
+              <div key={a.id} className="relative shrink-0">
+                {a.tipo === 'imagen' && a.preview ? (
+                  <img src={a.preview} alt={a.nombre} className="w-14 h-14 object-cover rounded-lg border border-gray-200" />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg border border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-0.5 px-1">
+                    <span className="text-base">{a.tipo === 'audio' ? '🎵' : a.tipo === 'video' ? '🎬' : '📄'}</span>
+                    <span className="text-[8px] text-gray-500 truncate w-full text-center leading-tight">{a.nombre.split('.').pop()?.toUpperCase()}</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => setAdjuntos(p => p.filter(x => x.id !== a.id))}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] leading-none flex items-center justify-center hover:bg-red-600"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*,application/pdf,audio/*,video/*"
+          multiple
+          onChange={onFileSelect}
+        />
         <div className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             disabled={isStreaming}
-            placeholder="Escribe o dicta tu requerimiento... (Ctrl+Enter para enviar)"
+            placeholder="Escribe, pega imagen o adjunta archivo... (Ctrl+Enter)"
             rows={3}
             className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:bg-gray-50"
           />
           <div className="flex flex-col gap-2">
+            {/* Botón Adjuntar */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming}
+              title="Adjuntar imagen, documento, audio o video"
+              className="flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-xl text-xs font-medium transition-all shrink-0 bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              <span className="text-[9px] leading-none">Adjunto</span>
+            </button>
             {/* Botón STT — dictar texto al textarea */}
             {sttSupported && (
               <button
@@ -679,7 +862,7 @@ export default function ChatPM({
             {/* Botón Enviar */}
             <button
               onClick={enviar}
-              disabled={isStreaming || !input.trim()}
+              disabled={isStreaming || (!input.trim() && adjuntos.length === 0)}
               className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
             >
               {isStreaming ? (
@@ -692,7 +875,7 @@ export default function ChatPM({
           </div>
         </div>
         <p className="text-[10px] text-gray-400 mt-1.5 ml-1">
-          Ctrl+Enter · <span className="text-emerald-600 font-medium">STT</span> dicta al campo · <span className="text-violet-600 font-medium">AI</span> graba y envía directo al PM
+          Ctrl+Enter · <span className="text-emerald-600 font-medium">STT</span> dicta · <span className="text-violet-600 font-medium">AI</span> graba · <span className="text-gray-500 font-medium">📎</span> adjunta · pega imagen con Ctrl+V
         </p>
       </div>
     </div>

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Área de Sistemas — Dashboard',
+  title: 'Servicios Agénticos — Dashboard',
   description: 'Panel de control de agentes y aprobaciones',
 };
 

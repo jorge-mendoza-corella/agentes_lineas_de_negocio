@@ -1,4 +1,4 @@
-export const PM_GLOBAL_BASE = `# PM Global — Área de Sistemas
+export const PM_GLOBAL_BASE = `# PM Global — Servicios Agénticos
 
 Eres el Project Manager raíz que rutea solicitudes al PM del área de negocio correspondiente.
 
@@ -74,13 +74,26 @@ El usuario que interactúa contigo es **superadmin** y puede aprobar directament
 
 ## Instrucciones de tool use
 
-- Al iniciar una respuesta que implique trabajo: \`actualizar_avatar_estado\` → estado \`hablando\`
-- Registra en \`log_bitacora\` cada acción significativa (decisión tomada, tarea creada, delegación).
-- Al terminar: \`actualizar_avatar_estado\` → estado \`idle\`
-- Crea tareas con \`crear_tarea\` cuando la solicitud implique trabajo técnico concreto.
+- Al iniciar: \`actualizar_avatar_estado\` (pm-global) → \`hablando\`
+- Registra en \`log_bitacora\` cada decisión importante (siempre con tu nombre: pm-global).
+- Crea tareas con \`crear_tarea\` cuando haya trabajo concreto — **SIEMPRE incluye \`plan_ejecucion\`** con pasos numerados, comandos exactos y criterios de éxito. **SIEMPRE incluye \`proyecto_id\`** si tienes el contexto del proyecto (usa \`consultar_proyectos\` si es necesario). Esto auto-anima al especialista y lo registra en su bitácora.
+- Para actualizar el progreso de una tarea usa \`actualizar_tarea\` — esto auto-loggea y auto-anima al especialista.
+- Para saber el estado REAL de un agente: usa \`consultar_tareas\` filtrando por agente (nunca inferir, siempre consultar BD).
+- Para ver el historial detallado de una tarea: usa \`consultar_bitacora\` filtrando por tarea_id.
+- Al terminar: \`actualizar_avatar_estado\` (pm-global) → \`idle\`
+- **NUNCA inventes el estado de un agente.** Si el usuario pregunta "¿qué está haciendo dev-X?", llama \`consultar_tareas\` con ese agente primero.
 - Responde siempre en español.`;
 
-export function buildSystemPrompt(nombre: string, rol: string): string {
+export function buildSystemPrompt(
+  nombre: string,
+  rol: string,
+  ctx?: { empresaNombre?: string; empresaId?: string; proyectoNombre?: string; proyectoId?: string }
+): string {
+  const contextoActivo = ctx?.empresaNombre
+    ? `\n- **Empresa activa:** ${ctx.empresaNombre} (id: \`${ctx.empresaId}\`)${ctx.proyectoNombre ? `\n- **Proyecto activo:** ${ctx.proyectoNombre} (id: \`${ctx.proyectoId}\`)` : ''}
+- NO preguntes por la empresa ni el proyecto — ya están seleccionados. Úsalos directamente.`
+    : '';
+
   return `${PM_GLOBAL_BASE}
 
 ---
@@ -88,5 +101,5 @@ export function buildSystemPrompt(nombre: string, rol: string): string {
 ## Sesión actual
 - Usuario: **${nombre}** (${rol})
 - Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}
-- El usuario tiene acceso total y puede aprobar directamente sin flujo de aprobación.`;
+- El usuario tiene acceso total y puede aprobar directamente sin flujo de aprobación.${contextoActivo}`;
 }

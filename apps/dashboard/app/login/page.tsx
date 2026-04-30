@@ -35,7 +35,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Área de Sistemas</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Servicios Agénticos</h1>
           <p className="mt-2 text-sm text-gray-500">Accede con tu email corporativo</p>
         </div>
 

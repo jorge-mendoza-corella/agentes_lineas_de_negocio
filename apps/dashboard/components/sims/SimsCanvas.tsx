@@ -686,7 +686,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
           <div className="flex items-center gap-3">
             <span className="text-lg">🏢</span>
             <div>
-              <p className="text-sm font-bold text-white">Área de Sistemas</p>
+              <p className="text-sm font-bold text-white">Servicios Agénticos</p>
               <p className="text-[10px] text-slate-500">
                 {enSala.length} trabajando · {enPasillo.length} en tránsito · {enLounge.length} en lounge
               </p>
@@ -975,7 +975,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                 {avatarPending ? '...' : '🛋️ Enviar a descanso'}
               </button>
             )}
-            {!atDesk(getEstado(selId!)) && getEstado(selId!) !== 'caminando' && (
+            {!atDesk(getEstado(selId!)) && getEstado(selId!) !== 'caminando' && selTareas.some(t => t.estado === 'pendiente') && (
               <button
                 disabled={avatarPending}
                 onClick={() => startAvatar(async () => { await reanudarTrabajo(selId!); })}

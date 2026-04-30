@@ -140,13 +140,14 @@ export default async function ProyectoDetallePage({ params }: Props) {
           </div>
           <div className="divide-y divide-gray-50">
             {tareasDirectas.map(t => {
-              const pasos     = parsePasos(t.plan_ejecucion);
-              const logCount  = bitacora.filter((b: any) => b.tarea_id === t.id).length;
-              const total     = pasos.length || logCount;
-              const doneCount = t.estado === 'completada' ? total
-                              : Math.min(logCount, total);
-              const pct       = total > 0 ? Math.round(doneCount / total * 100) : 0;
-              const remaining = total - doneCount;
+              const pasos       = parsePasos(t.plan_ejecucion);
+              const logCount    = bitacora.filter((b: any) => b.tarea_id === t.id).length;
+              const total       = pasos.length || logCount;
+              const finalizando = t.estado === 'en_progreso' && total > 0 && logCount >= total;
+              const doneCount   = t.estado === 'completada' ? total
+                                : Math.min(logCount, finalizando ? total - 1 : total);
+              const pct         = total > 0 ? Math.round(doneCount / total * 100) : 0;
+              const remaining   = total - doneCount;
 
               return (
                 <div key={t.id} className="px-6 py-4">
@@ -186,7 +187,10 @@ export default async function ProyectoDetallePage({ params }: Props) {
                           </div>
                           <div className="flex items-center gap-3 text-[10px]">
                             {doneCount > 0 && <span className="text-green-600 font-medium">✅ {doneCount} completados</span>}
-                            {remaining > 0 && <span className="text-gray-400">⬜ {remaining} pendientes</span>}
+                            {finalizando
+                              ? <span className="text-blue-500 font-medium">⏳ Verificando último paso...</span>
+                              : remaining > 0 && <span className="text-gray-400">⬜ {remaining} pendientes</span>
+                            }
                             <span className="text-gray-300">· {total} {pasos.length > 0 ? 'pasos' : 'acciones'} total</span>
                           </div>
                         </div>
@@ -203,7 +207,8 @@ export default async function ProyectoDetallePage({ params }: Props) {
                               const isCompleted = t.estado === 'completada';
                               const isActive    = t.estado === 'en_progreso';
                               const stepDone    = isCompleted || i < doneCount;
-                              const stepActive  = (isActive || t.estado === 'pendiente') && i === Math.min(doneCount, pasos.length - 1) && doneCount < pasos.length;
+                              const stepActive  = ((isActive || t.estado === 'pendiente') && i === Math.min(doneCount, pasos.length - 1) && doneCount < pasos.length)
+                                               || (finalizando && i === pasos.length - 1);
                               return (
                                 <div key={i} className="flex items-start gap-1.5">
                                   <span className="text-[10px] shrink-0 mt-0.5">

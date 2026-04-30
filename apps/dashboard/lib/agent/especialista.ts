@@ -192,6 +192,31 @@ async function handleTool(
       db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', agente)
         .then(() => {}).catch(() => {});
     }, 4000);
+
+    // Notificar al PM responsable para que informe al stakeholder
+    try {
+      const [{ data: tareaInfo }, { data: primeraEntradaPM }] = await Promise.all([
+        db.from('tareas').select('descripcion').eq('id', tareaId).maybeSingle() as Promise<{ data: { descripcion: string } | null }>,
+        db.from('bitacora_actividad').select('agente').eq('tarea_id', tareaId).like('agente', '%pm%').order('creado_en', { ascending: true }).limit(1).maybeSingle() as Promise<{ data: { agente: string } | null }>,
+      ]);
+      const pmResponsable = primeraEntradaPM?.agente ?? 'pm-global';
+      const descTarea     = (tareaInfo?.descripcion ?? '').slice(0, 120);
+      const resumenCorto  = (input.resumen as string).slice(0, 200);
+
+      await Promise.all([
+        db.from('bitacora_actividad').insert({
+          agente: pmResponsable,
+          accion: `🎉 ${agente} completó su tarea.\n• Tarea: ${descTarea}\n• Resumen: ${resumenCorto}\n→ Puedes informar al stakeholder.`,
+          tarea_id: tareaId,
+        }),
+        db.from('avatares').update({ estado_animacion: 'hablando' }).eq('agente_nombre', pmResponsable),
+      ]);
+      setTimeout(() => {
+        db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', pmResponsable)
+          .then(() => {}).catch(() => {});
+      }, 6000);
+    } catch {}
+
     return { resultado: JSON.stringify({ ok: true }), terminar: true };
   }
 

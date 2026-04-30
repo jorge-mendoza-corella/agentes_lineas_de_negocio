@@ -1016,12 +1016,13 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
             ) : (
               <div className="space-y-2">
                 {selTareas.slice(0, 8).map(t => {
-                  const steps    = t.plan_ejecucion ? parsePlanSteps(t.plan_ejecucion) : [];
-                  const logCount = bitacora.filter(b => b.tarea_id === t.id).length;
-                  const total    = steps.length || logCount;
-                  const doneCount = t.estado === 'completada' ? total
-                                  : t.estado === 'en_progreso' ? Math.min(logCount, total)
-                                  : 0;
+                  const steps      = t.plan_ejecucion ? parsePlanSteps(t.plan_ejecucion) : [];
+                  const logCount   = bitacora.filter(b => b.tarea_id === t.id).length;
+                  const total      = steps.length || logCount;
+                  const finalizando = t.estado === 'en_progreso' && total > 0 && logCount >= total;
+                  const doneCount  = t.estado === 'completada' ? total
+                                   : t.estado === 'en_progreso' ? Math.min(logCount, finalizando ? total - 1 : total)
+                                   : 0;
                   const remaining  = total - doneCount;
                   const isExpanded = expandedTareaId === t.id;
                   return (
@@ -1046,8 +1047,13 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                             {total > 0 && (
                               <span className="text-[9px]">
                                 <span style={{ color:'#22c55e' }}>✓ {doneCount}</span>
-                                <span className="text-slate-600"> · ⬜ {remaining}</span>
-                                <span className="text-slate-700"> · {total} {steps.length > 0 ? 'pasos' : 'acciones'}</span>
+                                {finalizando
+                                  ? <span style={{ color:'#60a5fa' }}> · ⏳ verificando último paso</span>
+                                  : <>
+                                      <span className="text-slate-600"> · ⬜ {remaining}</span>
+                                      <span className="text-slate-700"> · {total} {steps.length > 0 ? 'pasos' : 'acciones'}</span>
+                                    </>
+                                }
                               </span>
                             )}
                           </div>
@@ -1068,8 +1074,8 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               {steps.map((step, i) => {
                                 const isCompleted = t.estado === 'completada';
                                 const isActive    = t.estado === 'en_progreso';
-                                const stepDone    = isCompleted || (isActive && i < logCount);
-                                const stepActive  = isActive && i === Math.min(logCount, steps.length - 1);
+                                const stepDone    = isCompleted || (isActive && i < doneCount);
+                                const stepActive  = (isActive && i === Math.min(doneCount, steps.length - 1)) || (finalizando && i === steps.length - 1);
                                 return (
                                   <div key={i} className="flex items-start gap-1.5">
                                     <span className="mt-0.5 shrink-0" style={{ fontSize:10 }}>

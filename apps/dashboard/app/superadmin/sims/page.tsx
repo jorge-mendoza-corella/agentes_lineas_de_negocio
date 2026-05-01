@@ -14,9 +14,9 @@ export default async function SimsPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any)
       .from('tareas')
-      .select('id, agente_asignado, descripcion, estado, notas, plan_ejecucion, creado_en')
+      .select('id, agente_asignado, descripcion, estado, notas, plan_ejecucion, creado_en, proyecto_id, proyecto:proyectos(nombre, empresa_id, empresa:empresas(nombre))')
       .order('creado_en', { ascending: false })
-      .limit(150),
+      .limit(300),
   ]);
 
   return (

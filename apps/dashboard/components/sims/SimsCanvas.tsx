@@ -12,7 +12,12 @@ type LoungeAct  = 'playing' | 'sleeping' | 'chatting' | 'drinking' | 'idle';
 
 interface Avatar  { id: string; agente_nombre: string | null; estado_animacion: EstadoAnim }
 interface Entrada { id: string; agente: string; accion: string; creado_en: string; tarea_id?: string | null }
-interface Tarea   { id: string; agente_asignado: string; descripcion: string; estado: string; notas: string | null; plan_ejecucion?: string | null }
+interface Tarea   {
+  id: string; agente_asignado: string; descripcion: string; estado: string;
+  notas: string | null; plan_ejecucion?: string | null;
+  proyecto_id?: string | null;
+  proyecto?: { nombre: string; empresa_id: string; empresa?: { nombre: string } | null } | null;
+}
 interface Props   { avatoresIniciales: Avatar[]; bitacoraInicial: Entrada[]; tareasIniciales: Tarea[] }
 
 interface PersonajeCfg {
@@ -667,6 +672,10 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   const [dragOver, setDragOver]      = useState<'lounge' | 'sala' | 'pasillo' | null>(null);
   const dragEnterCount               = useRef<Record<string, number>>({});
   const [expandedTareaId, setExpandedTareaId] = useState<string | null>(null);
+  const [filtroEmpresaId, setFiltroEmpresaId]   = useState<string>('');
+  const [filtroProyectoId, setFiltroProyectoId] = useState<string>('');
+  const [filtroEstado, setFiltroEstado]         = useState<string>('');
+  const [tareaPage, setTareaPage]               = useState<number>(5);
 
   useEffect(() => {
     const map: Record<string, EstadoAnim> = {};
@@ -704,17 +713,50 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
       })
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'tareas' }, payload => {
         const updated = payload.new as Tarea;
-        setTareas(p => p.map(t => t.id === updated.id ? updated : t));
+        // Preservar datos de proyecto (realtime no incluye joins)
+        setTareas(p => p.map(t => t.id === updated.id ? { ...t, ...updated, proyecto: updated.proyecto ?? t.proyecto } : t));
       })
       .subscribe();
     return () => { supabase.removeChannel(canal); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    setFiltroEmpresaId('');
+    setFiltroProyectoId('');
+    setFiltroEstado('');
+    setTareaPage(5);
+    setExpandedTareaId(null);
+  }, [selId]);
+
   function getEstado(id: string): EstadoAnim { return estados[id] ?? 'idle'; }
+  function estadoColor(e: string) {
+    if (e === 'completada') return '#22c55e';
+    if (e === 'en_progreso') return '#3b82f6';
+    return '#eab308';
+  }
 
   const selCfg    = selId ? PERSONAJES[selId] : null;
   const selTareas = tareas.filter(t => t.agente_asignado === selId);
+
+  // ── Derivados para filtros ────────────────────────────────────────────────
+  const empresasAgente = [...new Map(
+    selTareas.filter(t => t.proyecto?.empresa_id && t.proyecto.empresa?.nombre)
+      .map(t => [t.proyecto!.empresa_id, t.proyecto!.empresa!.nombre])
+  ).entries()].map(([id, nombre]) => ({ id, nombre }));
+
+  const proyectosAgente = [...new Map(
+    selTareas
+      .filter(t => t.proyecto_id && t.proyecto?.nombre && (!filtroEmpresaId || t.proyecto?.empresa_id === filtroEmpresaId))
+      .map(t => [t.proyecto_id!, t.proyecto!.nombre])
+  ).entries()].map(([id, nombre]) => ({ id, nombre }));
+
+  const selTareasFiltradas = selTareas
+    .filter(t => !filtroEmpresaId  || t.proyecto?.empresa_id === filtroEmpresaId)
+    .filter(t => !filtroProyectoId || t.proyecto_id === filtroProyectoId)
+    .filter(t => !filtroEstado     || t.estado === filtroEstado);
+  const selTareasVisibles = selTareasFiltradas.slice(0, tareaPage);
+  const hayMasTareas = selTareasFiltradas.length > tareaPage;
 
   const agentesIds = Object.keys(PERSONAJES);
   const enLounge   = agentesIds.filter(id => !atDesk(getEstado(id)) && getEstado(id) !== 'caminando');
@@ -1062,14 +1104,61 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
 
           {/* Tareas con plan checklist */}
           <div className="px-6 py-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-3" style={{ color:`${selCfg.color}80` }}>
-              Tareas asignadas
-            </p>
+            {/* Cabecera + filtros */}
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color:`${selCfg.color}80` }}>
+                Tareas asignadas
+                {selTareasFiltradas.length !== selTareas.length && (
+                  <span className="ml-1 font-normal text-slate-600">({selTareasFiltradas.length}/{selTareas.length})</span>
+                )}
+              </p>
+              {(filtroEmpresaId || filtroProyectoId || filtroEstado) && (
+                <button onClick={() => { setFiltroEmpresaId(''); setFiltroProyectoId(''); setFiltroEstado(''); }}
+                  className="text-[9px] text-slate-500 hover:text-slate-300 px-1">✕ limpiar</button>
+              )}
+            </div>
+
+            {selTareas.length > 2 && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {/* Chips de estado */}
+                {(['pendiente','en_progreso','completada'] as const).map(e => (
+                  <button key={e} onClick={() => setFiltroEstado(filtroEstado === e ? '' : e)}
+                    className="text-[9px] font-semibold px-2 py-0.5 rounded-full transition-colors"
+                    style={{
+                      background: filtroEstado === e ? estadoColor(e)+'28' : 'rgba(255,255,255,0.04)',
+                      color:      filtroEstado === e ? estadoColor(e)       : '#475569',
+                      border:    `1px solid ${filtroEstado === e ? estadoColor(e)+'44' : 'rgba(255,255,255,0.06)'}`,
+                    }}>
+                    {e.replace('_',' ')}
+                  </button>
+                ))}
+                {/* Empresa */}
+                {empresasAgente.length > 1 && (
+                  <select value={filtroEmpresaId}
+                    onChange={e => { setFiltroEmpresaId(e.target.value); setFiltroProyectoId(''); }}
+                    className="text-[9px] bg-transparent border border-white/10 rounded px-1.5 py-0.5 text-slate-400 cursor-pointer">
+                    <option value="">Todas las empresas</option>
+                    {empresasAgente.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
+                  </select>
+                )}
+                {/* Proyecto */}
+                {proyectosAgente.length > 1 && (
+                  <select value={filtroProyectoId} onChange={e => setFiltroProyectoId(e.target.value)}
+                    className="text-[9px] bg-transparent border border-white/10 rounded px-1.5 py-0.5 text-slate-400 cursor-pointer">
+                    <option value="">Todos los proyectos</option>
+                    {proyectosAgente.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                )}
+              </div>
+            )}
+
             {selTareas.length === 0 ? (
               <p className="text-sm text-slate-500 italic">Sin tareas registradas todavía.</p>
+            ) : selTareasFiltradas.length === 0 ? (
+              <p className="text-sm text-slate-500 italic">No hay tareas con estos filtros.</p>
             ) : (
               <div className="space-y-2">
-                {selTareas.slice(0, 8).map(t => {
+                {selTareasVisibles.map(t => {
                   const steps      = t.plan_ejecucion ? parsePlanSteps(t.plan_ejecucion) : [];
                   const logCount   = bitacora.filter(b => b.tarea_id === t.id).length;
                   const total      = steps.length || logCount;
@@ -1093,6 +1182,12 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                         }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-slate-200 leading-snug">{t.descripcion}</p>
+                          {t.proyecto?.nombre && (
+                            <p className="text-[9px] text-slate-600 mt-0.5 truncate">
+                              {t.proyecto.empresa?.nombre && <span className="text-slate-700">{t.proyecto.empresa.nombre} · </span>}
+                              {t.proyecto.nombre}
+                            </p>
+                          )}
                           <div className="flex items-center flex-wrap gap-2 mt-0.5">
                             <p className="text-[10px] capitalize font-medium" style={{
                               color: t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? '#3b82f6' : (t.notas && /^error/i.test(t.notas) ? '#ef4444' : '#eab308'),
@@ -1262,6 +1357,13 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                     </div>
                   );
                 })}
+                {/* Ver más */}
+                {hayMasTareas && (
+                  <button onClick={() => setTareaPage(p => p + 5)}
+                    className="w-full text-[10px] text-slate-500 hover:text-slate-300 py-2 rounded-xl transition-colors border border-white/5 mt-1">
+                    Ver 5 más · {selTareasFiltradas.length - tareaPage} restantes
+                  </button>
+                )}
               </div>
             )}
           </div>

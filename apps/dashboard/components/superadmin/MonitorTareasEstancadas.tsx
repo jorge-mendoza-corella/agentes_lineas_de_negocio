@@ -147,14 +147,22 @@ export default function MonitorTareasEstancadas({ userId }: { userId: string }) 
       }
       if (!conv?.id) return;
 
-      await fetch('/api/pm-global', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversacion_id: conv.id,
-          mensaje: `🚨 Tarea estancada (${minutos} min): "${tarea.descripcion}" (${tarea.agente_asignado ?? 'agente desconocido'}). La reejecuté automáticamente. ¿Qué recomiendas si vuelve a bloquearse?`,
+      const mensajePM = `🚨 Tarea estancada (${minutos} min): "${tarea.descripcion}" (${tarea.agente_asignado ?? 'agente desconocido'}). La reejecuté automáticamente. ¿Qué recomiendas si vuelve a bloquearse?`;
+
+      await Promise.all([
+        fetch('/api/pm-global', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversacion_id: conv.id, mensaje: mensajePM }),
         }),
-      });
+        fetch('/api/notificar-telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mensaje: `🚨 <b>Agente bloqueado</b>\n<b>Agente:</b> ${tarea.agente_asignado ?? 'desconocido'}\n<b>Tarea:</b> ${tarea.descripcion.slice(0, 200)}\n<b>Sin actividad:</b> ${minutos} min\n\nYa se reinició automáticamente. Revisa el chat del PM Global para detalles.`,
+          }),
+        }),
+      ]);
       setEstado('listo');
     } catch { setEstado('idle'); }
   }

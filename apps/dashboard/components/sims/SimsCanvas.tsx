@@ -1486,23 +1486,57 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                             </div>
                           )}
                           {(() => {
-                            const sshLogs = extraerComandosSSH(bitacora, t.id);
-                            if (sshLogs.length === 0) return null;
+                            const allSSH = bitacora
+                              .filter(b => b.tarea_id === t.id)
+                              .filter(b => b.accion.startsWith('🖥️') || b.accion.startsWith('📤'));
+                            if (allSSH.length === 0) return null;
+                            const total = allSSH.length;
+                            const newestIsPending = allSSH[0]?.accion.startsWith('🖥️') ?? false;
                             return (
                               <div className="mt-3">
-                                <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color:`${selCfg.color}55` }}>
-                                  Comandos ejecutados
-                                </p>
-                                <div className="space-y-0.5 max-h-48 overflow-y-auto">
-                                  {sshLogs.map((b, i) => {
-                                    const isCmd = b.accion.startsWith('🖥️');
-                                    const txt = isCmd
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color:`${selCfg.color}55` }}>
+                                    Comandos SSH
+                                  </p>
+                                  <span className="text-[8px] px-1.5 py-0.5 rounded-full" style={{ background:'rgba(255,255,255,0.05)', color:'#475569' }}>
+                                    {total}
+                                  </span>
+                                  {newestIsPending && (
+                                    <span className="ml-auto text-[8px] font-bold text-blue-400 animate-pulse">
+                                      ⏳ esperando respuesta
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="space-y-0.5 max-h-56 overflow-y-auto">
+                                  {allSSH.map((b, i) => {
+                                    const isCmd     = b.accion.startsWith('🖥️');
+                                    const isPending = i === 0 && newestIsPending;
+                                    const num       = total - i;
+                                    const txt       = isCmd
                                       ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
-                                      : b.accion.replace(/^📤\s*SSH resultado \(exit \d+\):\s*/, '');
+                                      : b.accion.replace(/^📤\s*SSH resultado \(exit [^)]+\):\s*/, '');
+                                    const ts = new Date(b.creado_en).toLocaleString('es-MX', {
+                                      month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit',
+                                    });
+                                    const exitMatch = !isCmd ? b.accion.match(/exit (\d+)/) : null;
+                                    const exitCode  = exitMatch ? exitMatch[1] : null;
+                                    const isError   = exitCode != null && exitCode !== '0';
                                     return (
-                                      <div key={i} className="rounded px-2 py-1" style={{ background: isCmd ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.2)' }}>
-                                        <p className="text-[8px] font-mono break-all leading-relaxed" style={{ color: isCmd ? '#4ade80' : '#475569' }}>
-                                          {isCmd ? '$ ' : '  '}{txt.slice(0, 200)}{txt.length > 200 ? '…' : ''}
+                                      <div key={b.id} className="rounded-lg px-2 py-1.5" style={{
+                                        background: isPending ? 'rgba(59,130,246,0.1)' : isError ? 'rgba(239,68,68,0.07)' : isCmd ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.22)',
+                                        border: isPending ? '1px solid rgba(59,130,246,0.3)' : isError ? '1px solid rgba(239,68,68,0.2)' : '1px solid transparent',
+                                      }}>
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                          <span className="text-[7px] font-bold font-mono shrink-0" style={{ color:'#374151', opacity:0.65 }}>#{num}</span>
+                                          <span className="text-[7px] shrink-0 tabular-nums" style={{ color:'#374151' }}>{ts}</span>
+                                          {isPending && <span className="ml-auto text-[7px] font-bold text-blue-400 animate-pulse">⏳ aguardando…</span>}
+                                          {isError   && <span className="ml-auto text-[7px] font-bold text-red-400">✗ exit {exitCode}</span>}
+                                          {!isPending && !isError && exitCode === '0' && <span className="ml-auto text-[7px] font-semibold text-green-500 opacity-60">✓ ok</span>}
+                                        </div>
+                                        <p className="text-[8px] font-mono break-all leading-relaxed" style={{
+                                          color: isPending ? '#60a5fa' : isCmd ? '#4ade80' : isError ? '#f87171' : '#475569',
+                                        }}>
+                                          {isCmd ? '$ ' : '  '}{txt.slice(0, 300)}{txt.length > 300 ? '…' : ''}
                                         </p>
                                       </div>
                                     );
@@ -1511,23 +1545,73 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               </div>
                             );
                           })()}
-                          {steps.length === 0 && bitacora.filter(b => b.tarea_id === t.id).length > 0 && (
-                            <div className="space-y-1">
-                              <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color:`${selCfg.color}60` }}>Comandos ejecutados</p>
-                              {bitacora.filter(b => b.tarea_id === t.id).slice().reverse().slice(0, 20).map((b, i) => {
-                                const isCmd    = b.accion.startsWith('🖥️');
-                                const isResult = b.accion.startsWith('📤');
-                                const txt = isCmd ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '') : isResult ? b.accion.replace(/^📤\s*SSH resultado \(exit \d+\):\s*/, '') : b.accion;
-                                return (
-                                  <div key={i} className="rounded-lg px-2 py-1.5" style={{ background: isCmd ? 'rgba(0,0,0,0.5)' : isResult ? 'rgba(0,0,0,0.25)' : 'transparent' }}>
-                                    <p className="text-[8px] font-mono break-all leading-relaxed" style={{ color: isCmd ? '#4ade80' : isResult ? '#64748b' : '#94a3b8' }}>
-                                      {isCmd ? '$ ' : isResult ? '  ' : ''}{txt.slice(0, 200)}{txt.length > 200 ? '…' : ''}
-                                    </p>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
+                          {steps.length === 0 && bitacora.filter(b => b.tarea_id === t.id).length > 0 && (() => {
+                            const allEntries = bitacora.filter(b => b.tarea_id === t.id);
+                            const allSSH2 = allEntries.filter(b => b.accion.startsWith('🖥️') || b.accion.startsWith('📤'));
+                            const nonSSH   = allEntries.filter(b => !b.accion.startsWith('🖥️') && !b.accion.startsWith('📤'));
+                            const newestIsPending2 = allSSH2[0]?.accion.startsWith('🖥️') ?? false;
+                            const total2 = allSSH2.length;
+                            return (
+                              <div className="space-y-1">
+                                {allSSH2.length > 0 && (
+                                  <>
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                      <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color:`${selCfg.color}60` }}>Comandos SSH</p>
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded-full" style={{ background:'rgba(255,255,255,0.05)', color:'#475569' }}>{total2}</span>
+                                      {newestIsPending2 && <span className="ml-auto text-[8px] font-bold text-blue-400 animate-pulse">⏳ esperando respuesta</span>}
+                                    </div>
+                                    <div className="space-y-0.5 max-h-56 overflow-y-auto">
+                                      {allSSH2.map((b, i) => {
+                                        const isCmd2     = b.accion.startsWith('🖥️');
+                                        const isPending2 = i === 0 && newestIsPending2;
+                                        const num2       = total2 - i;
+                                        const txt2       = isCmd2
+                                          ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
+                                          : b.accion.replace(/^📤\s*SSH resultado \(exit [^)]+\):\s*/, '');
+                                        const ts2 = new Date(b.creado_en).toLocaleString('es-MX', {
+                                          month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit',
+                                        });
+                                        const exitMatch2 = !isCmd2 ? b.accion.match(/exit (\d+)/) : null;
+                                        const exitCode2  = exitMatch2 ? exitMatch2[1] : null;
+                                        const isError2   = exitCode2 != null && exitCode2 !== '0';
+                                        return (
+                                          <div key={b.id} className="rounded-lg px-2 py-1.5" style={{
+                                            background: isPending2 ? 'rgba(59,130,246,0.1)' : isError2 ? 'rgba(239,68,68,0.07)' : isCmd2 ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.22)',
+                                            border: isPending2 ? '1px solid rgba(59,130,246,0.3)' : isError2 ? '1px solid rgba(239,68,68,0.2)' : '1px solid transparent',
+                                          }}>
+                                            <div className="flex items-center gap-2 mb-0.5">
+                                              <span className="text-[7px] font-bold font-mono shrink-0" style={{ color:'#374151', opacity:0.65 }}>#{num2}</span>
+                                              <span className="text-[7px] shrink-0 tabular-nums" style={{ color:'#374151' }}>{ts2}</span>
+                                              {isPending2  && <span className="ml-auto text-[7px] font-bold text-blue-400 animate-pulse">⏳ aguardando…</span>}
+                                              {isError2    && <span className="ml-auto text-[7px] font-bold text-red-400">✗ exit {exitCode2}</span>}
+                                              {!isPending2 && !isError2 && exitCode2 === '0' && <span className="ml-auto text-[7px] font-semibold text-green-500 opacity-60">✓ ok</span>}
+                                            </div>
+                                            <p className="text-[8px] font-mono break-all leading-relaxed" style={{
+                                              color: isPending2 ? '#60a5fa' : isCmd2 ? '#4ade80' : isError2 ? '#f87171' : '#475569',
+                                            }}>
+                                              {isCmd2 ? '$ ' : '  '}{txt2.slice(0, 300)}{txt2.length > 300 ? '…' : ''}
+                                            </p>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </>
+                                )}
+                                {nonSSH.length > 0 && (
+                                  <>
+                                    <p className="text-[9px] font-bold uppercase tracking-wider mt-2 mb-1" style={{ color:`${selCfg.color}60` }}>Actividad reciente</p>
+                                    {nonSSH.slice(0, 12).map((b) => (
+                                      <div key={b.id} className="rounded-lg px-2 py-1" style={{ background:'transparent' }}>
+                                        <p className="text-[8px] break-all leading-relaxed" style={{ color:'#94a3b8' }}>
+                                          {b.accion.slice(0, 200)}{b.accion.length > 200 ? '…' : ''}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {steps.length === 0 && bitacora.filter(b => b.tarea_id === t.id).length === 0 && !t.notas && (
                             <p className="text-[10px] text-slate-600 italic">Sin detalles adicionales.</p>
                           )}

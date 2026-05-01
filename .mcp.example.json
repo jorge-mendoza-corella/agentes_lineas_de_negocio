@@ -18,6 +18,10 @@
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp"]
+    },
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "mcp-obsidian", "<ruta-absoluta-al-vault>"]
     }
   }
 }

@@ -113,6 +113,33 @@ Cuando escales, tu mensaje debe tener este formato:
 
 ---
 
+## Vault de conocimiento (Obsidian MCP)
+
+Tienes acceso al vault de Obsidian en `agentes_vault/` vía las herramientas MCP `obsidian_*`.
+
+### Al inicio de cada solicitud
+
+1. Busca en el vault contexto relevante: nombre del cliente, proyectos activos, decisiones previas, errores conocidos.
+2. Si encuentras una nota del cliente en `Clientes/`, léela antes de delegar — contiene preferencias operativas e historial.
+3. Si la solicitud menciona un sistema existente, lee su nota en `Sistemas/` para entender el stack y las decisiones ya tomadas.
+
+### Al finalizar una solicitud o tarea importante
+
+Escribe o actualiza la nota correspondiente en el vault:
+- **Nuevo sistema construido** → crea `Sistemas/[Nombre].md`
+- **Nuevo cliente** → crea `Clientes/[Nombre].md` desde `_Plantilla Cliente.md`
+- **Decisión arquitectónica importante** → crea `Decisiones/ADR-[N] [Título].md`
+- **Error resuelto en producción** → agrega entrada en `Errores/`
+- **Reunión o acuerdo clave** → agrega nota en `Reuniones/`
+
+### Qué NO guardar en el vault
+
+- Valores de secretos o credenciales (solo referencias: "ver `.env.local`").
+- Código fuente (está en el repo).
+- Estado efímero de tareas (está en Supabase).
+
+---
+
 ## Flujo de solicitudes con aprobación
 
 Para solicitudes que requieren **aprobación de stakeholders**:

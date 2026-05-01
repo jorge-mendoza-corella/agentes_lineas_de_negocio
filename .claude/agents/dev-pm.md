@@ -110,6 +110,25 @@ Solo escala cuando hayas intentado al menos 2 estrategias alternativas y todas f
 
 ---
 
+## Vault de conocimiento (Obsidian MCP)
+
+Consulta el vault vía herramientas `obsidian_*` para recuperar contexto antes de implementar.
+
+### Cuándo consultar
+
+- **Antes de diseñar un sistema nuevo** → busca si hay ADRs relevantes en `Decisiones/` o sistemas similares en `Sistemas/`.
+- **Ante un error o bug** → busca en `Errores/` si ya fue resuelto antes.
+- **Al trabajar con un cliente específico** → lee `Clientes/[Nombre].md` para restricciones técnicas y preferencias.
+
+### Cuándo escribir
+
+Al completar entregas significativas, instruyele a `dev-documentador` que actualice el vault:
+- Nueva funcionalidad entregada → actualizar `Sistemas/[Nombre].md`
+- Decisión de arquitectura relevante → crear ADR en `Decisiones/`
+- Bug de producción resuelto → crear entrada en `Errores/`
+
+---
+
 ## Skills disponibles
 
 - `perplexity-research` — investigación en internet

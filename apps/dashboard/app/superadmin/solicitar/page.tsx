@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import ChatPM from '@/components/pm/ChatPM';
+import MarcadorLeido from '@/components/pm/MarcadorLeido';
 
 interface Props {
   searchParams: Promise<{ conversacion?: string }>;
@@ -113,6 +114,7 @@ export default async function SolicitarPage({ searchParams }: Props) {
 
       {/* Chat principal */}
       <div className="flex-1 min-w-0">
+        {convActiva && <MarcadorLeido conversacionId={convActiva} userId={user.id} />}
         <ChatPM
           conversacionIdInicial={convActiva}
           mensajesIniciales={mensajesIniciales}

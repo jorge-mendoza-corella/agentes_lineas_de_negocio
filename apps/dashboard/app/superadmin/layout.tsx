@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import NavSuperadmin from '@/components/nav/NavSuperadmin';
+import MonitorTareasEstancadas from '@/components/superadmin/MonitorTareasEstancadas';
 
 type Perfil = { rol: string; nombre: string };
 
@@ -20,8 +21,9 @@ export default async function SuperadminLayout({ children }: { children: React.R
 
   return (
     <div className="min-h-screen flex">
-      <NavSuperadmin nombre={perfil?.nombre ?? ''} />
+      <NavSuperadmin nombre={perfil?.nombre ?? ''} userId={user.id} />
       <main className="flex-1 p-8 overflow-auto">{children}</main>
+      <MonitorTareasEstancadas userId={user.id} />
     </div>
   );
 }

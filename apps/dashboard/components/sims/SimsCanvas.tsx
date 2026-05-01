@@ -23,7 +23,7 @@ interface Props   { avatoresIniciales: Avatar[]; bitacoraInicial: Entrada[]; tar
 interface PersonajeCfg {
   nombre: string; titulo: string; personalidad: string;
   color: string; colorDark: string; accent: string;
-  deskRow: 0|1|2; deskCol: 0|1|2|3; loungeSlot: number;
+  deskRow: 0|1|2|3; deskCol: 0|1|2|3; loungeSlot: number;
   skinColor: string; hairColor: string;
   hairStyle: HairStyle; accessory: Accessory;
   tool: RoleTool; roleEmoji: string;
@@ -42,6 +42,7 @@ const PERSONAJES: Record<string, PersonajeCfg> = {
   'dev-ciberseguridad': { nombre:'Seguridad',    titulo:'Cyber Especialista',   personalidad:'Vigilante · Cauteloso',     color:'#ef4444', colorDark:'#450a0a', accent:'#fecaca', deskRow:2, deskCol:1, loungeSlot:9,  skinColor:'#6b3a2a', hairColor:'#0d0d0d', hairStyle:'hoodie',     accessory:'none',    tool:'shield',     roleEmoji:'🛡️' },
   'dev-redes':          { nombre:'Redes',        titulo:'Ing. de Redes',        personalidad:'Conectado · Ágil',          color:'#06b6d4', colorDark:'#083344', accent:'#cffafe', deskRow:2, deskCol:2, loungeSlot:10, skinColor:'#e5b48a', hairColor:'#3b2005', hairStyle:'short',      accessory:'headset', tool:'antenna',    roleEmoji:'📡' },
   'dev-soporte':        { nombre:'Soporte',      titulo:'Esp. Soporte',         personalidad:'Amable · Resolutivo',       color:'#6366f1', colorDark:'#1e1b4b', accent:'#c7d2fe', deskRow:2, deskCol:3, loungeSlot:11, skinColor:'#c68642', hairColor:'#1a1a1a', hairStyle:'casual',     accessory:'headset', tool:'screwdriver',roleEmoji:'🎧' },
+  'trans-investigador': { nombre:'Investigador', titulo:'Analista Web',          personalidad:'Curioso · Meticuloso',      color:'#f59e0b', colorDark:'#78350f', accent:'#fde68a', deskRow:3, deskCol:0, loungeSlot:12, skinColor:'#f1c27d', hairColor:'#7c4a03', hairStyle:'short',      accessory:'glasses', tool:'magnifier',  roleEmoji:'🔍' },
 };
 
 const LOUNGE_POS = [
@@ -50,12 +51,15 @@ const LOUNGE_POS = [
   {x:14, y:48},{x:28, y:48},
   {x:88, y:28},{x:88, y:52},
   {x:55, y:18},{x:18, y:24},
+  {x:75, y:18},
 ];
 
 const DESK_POS = [
   {x:12,y:20},{x:37,y:20},{x:63,y:20},{x:88,y:20},
   {x:12,y:52},{x:37,y:52},{x:63,y:52},{x:88,y:52},
   {x:12,y:82},{x:37,y:82},{x:63,y:82},{x:88,y:82},
+  // fila 4 — trans-investigador (posición centrada independiente)
+  {x:50,y:85},
 ];
 
 function atDesk(e: EstadoAnim) { return e === 'trabajando' || e === 'hablando' || e === 'celebrando'; }
@@ -797,7 +801,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
         </div>
 
         {/* Tres zonas */}
-        <div className="flex" style={{ height:500 }}>
+        <div className="flex" style={{ height:580 }}>
 
           {/* ═══ ZONA 1: LOUNGE ═══ */}
           <div

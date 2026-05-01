@@ -18,6 +18,7 @@ const AGENTE_EMOJI: Record<string, string> = {
   'pm-global':'🎯','dev-pm':'👨‍💼','dev-backend':'⚙️','dev-bd':'🗄️',
   'dev-frontend':'🎨','dev-devops':'🚀','dev-testing':'🧪','dev-diseno':'✏️',
   'dev-documentador':'📚','dev-ciberseguridad':'🛡️','dev-redes':'🌐','dev-soporte':'🎧',
+  'trans-investigador':'🔍',
 };
 const STALL_MINUTOS = 30;
 

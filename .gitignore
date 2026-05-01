@@ -2,6 +2,9 @@
 .env
 .env.local
 .env.*.local
+# MCP con credenciales reales (no commitear — usar .mcp.example.json como template)
+.mcp.json
+.mcp.local.json
 # Configuración local de Claude Code (no compartir settings personales)
 .claude/settings.local.json
 .claude/settings.json

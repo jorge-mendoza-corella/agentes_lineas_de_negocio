@@ -4,15 +4,15 @@
       "command": "npx",
       "args": ["-y", "n8n-mcp"],
       "env": {
-        "N8N_API_URL": "",
-        "N8N_API_KEY": ""
+        "N8N_API_URL": "<url-de-tu-instancia-n8n>",
+        "N8N_API_KEY": "<api-key-de-n8n>"
       }
     },
     "cloudflare": {
       "command": "npx",
       "args": ["-y", "@cloudflare/mcp-server-cloudflare"],
       "env": {
-        "CLOUDFLARE_API_TOKEN": ""
+        "CLOUDFLARE_API_TOKEN": "<token-de-cloudflare-con-permisos-Zone:Read+Edit+DNS:Edit>"
       }
     }
   }

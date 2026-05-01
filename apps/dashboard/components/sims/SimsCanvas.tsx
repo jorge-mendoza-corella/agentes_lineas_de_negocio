@@ -713,10 +713,10 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
         }
       })
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'bitacora_actividad' }, payload => {
-        setBitacora(p => [payload.new as Entrada, ...p].slice(0, 30));
+        setBitacora(p => [payload.new as Entrada, ...p].slice(0, 150));
       })
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'tareas' }, payload => {
-        setTareas(p => [payload.new as Tarea, ...p].slice(0, 50));
+        setTareas(p => [payload.new as Tarea, ...p].slice(0, 500));
       })
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'tareas' }, payload => {
         const updated = payload.new as Tarea;

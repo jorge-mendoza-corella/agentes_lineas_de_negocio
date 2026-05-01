@@ -793,11 +793,15 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   }
 
   // ── Zonas de empresa dinámicas ────────────────────────────────────────────
-  const companyZones = deriveCompanyZones(tareas);
+  // Agentes idle siempre van al lounge aunque tengan tareas pendientes
+  const companyZones = deriveCompanyZones(tareas).map(zone => ({
+    ...zone,
+    agents: zone.agents.filter(id => getEstado(id) !== 'idle'),
+  })).filter(z => z.agents.length > 0 || z.ghostAgents.length > 0);
 
   const agentesIds = Object.keys(PERSONAJES);
 
-  // Agentes en lounge = los que NO tienen zona de empresa asignada Y no están en tránsito
+  // Agentes en lounge = idle, o sin zona de empresa asignada, y no en tránsito
   const enLounge = agentesIds.filter(id => {
     if (getEstado(id) === 'caminando') return false;
     return !companyZones.some(z => z.agents.includes(id));

@@ -643,6 +643,12 @@ async function ejecutarTareaAPI(tareaId: string, reanudar = false) {
   });
 }
 
+async function cambiarEstadoTareaAPI(tareaId: string, nuevoEstado: string) {
+  const { createClient } = await import('@/lib/supabase/client');
+  const sb = createClient() as any;
+  await sb.from('tareas').update({ estado: nuevoEstado }).eq('id', tareaId);
+}
+
 // Extrae los comandos SSH de las entradas de bitácora de una tarea
 function extraerComandosSSH(bitacora: Entrada[], tareaId: string) {
   return bitacora
@@ -676,6 +682,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   const [filtroProyectoId, setFiltroProyectoId] = useState<string>('');
   const [filtroEstado, setFiltroEstado]         = useState<string>('');
   const [tareaPage, setTareaPage]               = useState<number>(5);
+  const [cambioEstadoId, setCambioEstadoId]     = useState<string | null>(null);
 
   useEffect(() => {
     const map: Record<string, EstadoAnim> = {};
@@ -1259,6 +1266,34 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                       {/* Checklist expandida */}
                       {isExpanded && (
                         <div className="px-3 pb-3">
+                          {/* Cambio manual de estado (bypass) */}
+                          <div className="flex items-center gap-1.5 mb-3 flex-wrap" onClick={e => e.stopPropagation()}>
+                            <span className="text-[9px] text-slate-600 font-semibold uppercase tracking-wider">Mover a:</span>
+                            {([
+                              { estado: 'pendiente',   label: 'Pendiente',   color: '#eab308' },
+                              { estado: 'en_progreso', label: 'En progreso', color: '#3b82f6' },
+                              { estado: 'completada',  label: 'Completada',  color: '#22c55e' },
+                              { estado: 'cancelada',   label: 'Cancelada',   color: '#64748b' },
+                            ] as const).filter(s => s.estado !== t.estado).map(s => (
+                              <button key={s.estado}
+                                disabled={cambioEstadoId === t.id}
+                                onClick={async () => {
+                                  setCambioEstadoId(t.id);
+                                  await cambiarEstadoTareaAPI(t.id, s.estado);
+                                  setCambioEstadoId(null);
+                                }}
+                                className="text-[9px] font-semibold px-2 py-0.5 rounded-md transition-opacity"
+                                style={{
+                                  background: `${s.color}18`,
+                                  color: s.color,
+                                  border: `1px solid ${s.color}35`,
+                                  opacity: cambioEstadoId === t.id ? 0.4 : 1,
+                                }}>
+                                {cambioEstadoId === t.id ? '…' : s.label}
+                              </button>
+                            ))}
+                          </div>
+
                           {t.notas && (
                             <p className="text-[10px] text-slate-400 mb-2 leading-snug italic border-l-2 pl-2" style={{ borderColor:`${selCfg.color}40` }}>
                               {t.notas}

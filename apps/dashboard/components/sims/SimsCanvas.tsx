@@ -630,6 +630,14 @@ function parsePlanSteps(plan: string): string[] {
     .filter(l => l.length > 4);
 }
 
+async function ejecutarTareaAPI(tareaId: string, reanudar = false) {
+  await fetch('/api/ejecutar-tarea', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tarea_id: tareaId, reanudar }),
+  });
+}
+
 // Extrae los comandos SSH de las entradas de bitácora de una tarea
 function extraerComandosSSH(bitacora: Entrada[], tareaId: string) {
   return bitacora
@@ -654,6 +662,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   const [papeles, setPapeles]        = useState<Papel[]>([]);
   const [avatarPending, startAvatar] = useTransition();
   const [dragId, setDragId]          = useState<string | null>(null);
+  const [ejecutandoId, setEjecutandoId] = useState<string | null>(null);
   const dragIdRef                    = useRef<string | null>(null);
   const [dragOver, setDragOver]      = useState<'lounge' | 'sala' | 'pasillo' | null>(null);
   const dragEnterCount               = useRef<Record<string, number>>({});
@@ -1127,7 +1136,24 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                             );
                           })()}
                         </div>
-                        <span className="text-slate-600 text-xs mt-0.5 shrink-0">{isExpanded ? '▲' : '▼'}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {(t.estado === 'pendiente') && (
+                            <button
+                              disabled={ejecutandoId === t.id}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setEjecutandoId(t.id);
+                                await ejecutarTareaAPI(t.id, false);
+                                setTimeout(() => setEjecutandoId(null), 3000);
+                              }}
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-md transition-opacity"
+                              style={{ background:'rgba(234,179,8,0.15)', color:'#eab308', border:'1px solid rgba(234,179,8,0.3)', opacity: ejecutandoId === t.id ? 0.5 : 1 }}
+                              title="Ejecutar tarea ahora">
+                              {ejecutandoId === t.id ? '⏳' : '▶'}
+                            </button>
+                          )}
+                          <span className="text-slate-600 text-xs mt-0.5">{isExpanded ? '▲' : '▼'}</span>
+                        </div>
                       </div>
 
                       {/* Checklist expandida */}

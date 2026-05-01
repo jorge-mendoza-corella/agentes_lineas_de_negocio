@@ -8,7 +8,8 @@ type EstadoAnim = 'idle' | 'caminando' | 'trabajando' | 'hablando' | 'celebrando
 type HairStyle  = 'profesional' | 'casual' | 'spiky' | 'hoodie' | 'bun' | 'creativo' | 'short';
 type Accessory  = 'none' | 'glasses' | 'headset' | 'cap' | 'tie' | 'beret';
 type RoleTool   = 'clipboard' | 'magnifier' | 'wrench' | 'screwdriver' | 'antenna' | 'palette' | 'paintbrush' | 'book' | 'shield' | 'database' | 'server' | 'none';
-type LoungeAct  = 'playing' | 'sleeping' | 'chatting' | 'drinking' | 'idle';
+type LoungeAct     = 'playing' | 'sleeping' | 'chatting' | 'drinking' | 'idle';
+type EstiloAvatares = 'humanos' | 'animales' | 'mixto';
 
 interface Avatar  { id: string; agente_nombre: string | null; estado_animacion: EstadoAnim }
 interface Entrada { id: string; agente: string; accion: string; creado_en: string; tarea_id?: string | null }
@@ -45,6 +46,22 @@ const PERSONAJES: Record<string, PersonajeCfg> = {
   'trans-investigador': { nombre:'Investigador', titulo:'Analista Web',          personalidad:'Curioso · Meticuloso',      color:'#f59e0b', colorDark:'#78350f', accent:'#fde68a', deskRow:3, deskCol:0, loungeSlot:12, skinColor:'#f1c27d', hairColor:'#7c4a03', hairStyle:'short',      accessory:'glasses', tool:'magnifier',  roleEmoji:'🔍' },
 };
 
+const AVATAR_EMOJIS: Record<string, { animal: string; mixto: string }> = {
+  'pm-global':          { animal: '🦅', mixto: '🤖' },
+  'dev-pm':             { animal: '🦉', mixto: '🧑‍💼' },
+  'dev-backend':        { animal: '🐻', mixto: '⚙️'  },
+  'dev-bd':             { animal: '🐘', mixto: '🧙'  },
+  'dev-frontend':       { animal: '🦋', mixto: '🧚'  },
+  'dev-devops':         { animal: '🦝', mixto: '👾'  },
+  'dev-testing':        { animal: '🦎', mixto: '🕵️'  },
+  'dev-diseno':         { animal: '🦊', mixto: '🎨'  },
+  'dev-documentador':   { animal: '🐢', mixto: '👻'  },
+  'dev-ciberseguridad': { animal: '🐺', mixto: '🥷'  },
+  'dev-redes':          { animal: '🕷️', mixto: '🐙'  },
+  'dev-soporte':        { animal: '🐶', mixto: '🫶'  },
+  'trans-investigador': { animal: '🐱', mixto: '👽'  },
+};
+
 const LOUNGE_POS = [
   {x:46, y:40},{x:68, y:40},{x:46, y:62},{x:68, y:62},
   {x:14, y:68},{x:28, y:68},
@@ -54,13 +71,95 @@ const LOUNGE_POS = [
   {x:75, y:18},
 ];
 
+// Legacy desk positions (used as fallback when no company zones)
 const DESK_POS = [
   {x:12,y:20},{x:37,y:20},{x:63,y:20},{x:88,y:20},
   {x:12,y:52},{x:37,y:52},{x:63,y:52},{x:88,y:52},
   {x:12,y:82},{x:37,y:82},{x:63,y:82},{x:88,y:82},
-  // fila 4 — trans-investigador (posición centrada independiente)
   {x:50,y:85},
 ];
+
+// ── Company zone colour palette (6 colores rotativos) ─────────────────────────
+const COMPANY_PALETTE = [
+  { bg:'#dbeafe', border:'#3b82f6', header:'#1d4ed8', tile:'#eff6ff', soft:'#bfdbfe' },
+  { bg:'#dcfce7', border:'#22c55e', header:'#15803d', tile:'#f0fdf4', soft:'#bbf7d0' },
+  { bg:'#fce7f3', border:'#ec4899', header:'#be185d', tile:'#fdf2f8', soft:'#fbcfe8' },
+  { bg:'#fed7aa', border:'#f97316', header:'#c2410c', tile:'#fff7ed', soft:'#fdba74' },
+  { bg:'#e9d5ff', border:'#a855f7', header:'#7e22ce', tile:'#faf5ff', soft:'#d8b4fe' },
+  { bg:'#ccfbf1', border:'#14b8a6', header:'#0f766e', tile:'#f0fdfa', soft:'#99f6e4' },
+] as const;
+
+type CompanyColor = typeof COMPANY_PALETTE[number];
+
+interface CompanyZoneInfo {
+  empresaId:       string;
+  empresaNombre:   string;
+  proyectoNombres: string[];
+  agents:          string[];       // agentes con tarea primaria aquí
+  ghostAgents:     string[];       // agentes en cola (trabajando en otra empresa)
+  color:           CompanyColor;
+}
+
+// Posiciones de escritorios dentro de cada zona (% del ancho/alto de la zona)
+const ZONE_DESK_SLOTS = [
+  { x:20, y:22 }, { x:70, y:22 },
+  { x:20, y:52 }, { x:70, y:52 },
+  { x:20, y:80 }, { x:70, y:80 },
+];
+
+// ── Derivar zonas de empresa desde tareas activas ──────────────────────────────
+function deriveCompanyZones(tareas: Tarea[]): CompanyZoneInfo[] {
+  const active = tareas.filter(t =>
+    (t.estado === 'en_progreso' || t.estado === 'pendiente') && t.proyecto?.empresa_id
+  );
+  if (active.length === 0) return [];
+
+  const zoneMap = new Map<string, { nombre: string; proyectos: Set<string> }>();
+  for (const t of active) {
+    const eid = t.proyecto!.empresa_id;
+    if (!zoneMap.has(eid)) {
+      zoneMap.set(eid, { nombre: t.proyecto?.empresa?.nombre ?? 'Empresa', proyectos: new Set() });
+    }
+    const pn = t.proyecto?.nombre ?? '';
+    if (pn) zoneMap.get(eid)!.proyectos.add(pn);
+  }
+
+  // Empresa primaria por agente: en_progreso > pendiente
+  const agentPrimary = new Map<string, string>();
+  for (const t of active) {
+    if (t.estado === 'en_progreso') agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
+  }
+  for (const t of active) {
+    if (!agentPrimary.has(t.agente_asignado)) agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
+  }
+
+  // Fantasmas: agentes con tareas en empresa secundaria
+  const ghostMap = new Map<string, Set<string>>();
+  for (const t of active) {
+    const primary = agentPrimary.get(t.agente_asignado);
+    if (primary && primary !== t.proyecto!.empresa_id) {
+      const eid = t.proyecto!.empresa_id;
+      if (!ghostMap.has(eid)) ghostMap.set(eid, new Set());
+      ghostMap.get(eid)!.add(t.agente_asignado);
+    }
+  }
+
+  // Agentes primarios por zona
+  const primaryByZone = new Map<string, Set<string>>();
+  for (const [ag, eid] of agentPrimary) {
+    if (!primaryByZone.has(eid)) primaryByZone.set(eid, new Set());
+    primaryByZone.get(eid)!.add(ag);
+  }
+
+  return Array.from(zoneMap.entries()).map(([eid, info], i) => ({
+    empresaId:       eid,
+    empresaNombre:   info.nombre,
+    proyectoNombres: Array.from(info.proyectos),
+    agents:          Array.from(primaryByZone.get(eid) ?? new Set()),
+    ghostAgents:     Array.from(ghostMap.get(eid) ?? new Set()),
+    color:           COMPANY_PALETTE[i % COMPANY_PALETTE.length]!,
+  }));
+}
 
 function atDesk(e: EstadoAnim) { return e === 'trabajando' || e === 'hablando' || e === 'celebrando'; }
 
@@ -178,7 +277,7 @@ function ToolShape({ tool, color, accent }: { tool: RoleTool; color: string; acc
   }
 }
 
-// ── Figura humana SVG mejorada ───────────────────────────────────────────────
+// ── Figura humana SVG ─────────────────────────────────────────────────────────
 function HumanFigure({ cfg, estado }: { cfg: PersonajeCfg; estado: EstadoAnim }) {
   const { skinColor, hairColor, hairStyle, accessory, color, colorDark, accent, tool } = cfg;
   const isActive      = atDesk(estado);
@@ -186,10 +285,10 @@ function HumanFigure({ cfg, estado }: { cfg: PersonajeCfg; estado: EstadoAnim })
   const isWorking     = estado === 'trabajando';
   const isTalking     = estado === 'hablando';
 
-  const shadowColor   = 'rgba(0,0,0,0.12)';
-  const eyeColor      = skinColor.startsWith('#6b') ? '#5b8dd9' : '#3d6bb5';
+  const shadowColor = 'rgba(0,0,0,0.12)';
+  const eyeColor    = skinColor.startsWith('#6b') ? '#5b8dd9' : '#3d6bb5';
 
-  const mouthCurve  = isCelebrating ? 'M13 20 Q20 26 27 20'
+  const mouthCurve = isCelebrating ? 'M13 20 Q20 26 27 20'
     : isWorking ? 'M14.5 20 Q20 22 25.5 20'
     : 'M13.5 20.5 Q20 24 26.5 20.5';
 
@@ -198,58 +297,29 @@ function HumanFigure({ cfg, estado }: { cfg: PersonajeCfg; estado: EstadoAnim })
 
   return (
     <svg width="40" height="56" viewBox="0 0 40 56" style={{ overflow: 'visible' }}>
-
-      {/* Sombra suelo */}
       {isActive && <ellipse cx="20" cy="57" rx="14" ry="3" fill={color} opacity="0.28" />}
-
-      {/* ── Herramienta de rol ── */}
       <ToolShape tool={tool} color={color} accent={accent} />
-
-      {/* Brazo izquierdo */}
       <path d="M6 37 Q1 45 2 53" stroke={color} strokeWidth="5.5" strokeLinecap="round" fill="none" />
-      {/* Mano izquierda */}
       <circle cx="2" cy="53" r="3" fill={skinColor} />
-
-      {/* Brazo derecho */}
       <path d="M34 37 Q39 45 38 53" stroke={color} strokeWidth="5.5" strokeLinecap="round" fill="none" />
-      {/* Mano derecha */}
       <circle cx="38" cy="53" r="3" fill={skinColor} />
-
-      {/* Cuerpo / camisa */}
       <path d="M5 57 L5 38 Q9 29 17 28 L23 28 Q31 29 35 38 L35 57 Z" fill={color} />
-      {/* Sombra lateral cuerpo */}
       <path d="M5 57 L5 38 Q8 30 16 28 L16 57 Z" fill="rgba(0,0,0,0.09)" />
-      {/* Detalle cuello de camisa */}
       <path d="M16 28 L20 35 L24 28" fill="white" opacity="0.15" />
-
-      {/* Cuello */}
       <rect x="17" y="25" width="6" height="6" rx="2.5" fill={skinColor} />
       <rect x="17" y="28" width="6" height="3" rx="1" fill={shadowColor} />
-
-      {/* Cabeza */}
       <circle cx="20" cy="14" r="13" fill={skinColor} />
-      {/* Sombra natural pómulos y mentón */}
       <ellipse cx="20" cy="24" rx="7.5" ry="3.5" fill={shadowColor} />
       <ellipse cx="8.5" cy="16" rx="3" ry="2.5" fill={shadowColor} opacity="0.5" />
       <ellipse cx="31.5" cy="16" rx="3" ry="2.5" fill={shadowColor} opacity="0.5" />
-
-      {/* Orejas */}
       <ellipse cx="7" cy="15" rx="2.5" ry="3" fill={skinColor} />
       <ellipse cx="33" cy="15" rx="2.5" ry="3" fill={skinColor} />
-
-      {/* ── Cabello ── */}
-      {hairStyle === 'profesional' && (
-        <path d="M7 14 Q7 1 20 1 Q33 1 33 14 Q31 5 20 4 Q9 5 7 14" fill={hairColor} />
-      )}
-      {hairStyle === 'casual' && (
-        <path d="M7 16 Q6 0 20 0 Q34 0 33 16 Q31 4 20 3 Q9 4 7 16" fill={hairColor} />
-      )}
+      {hairStyle === 'profesional' && <path d="M7 14 Q7 1 20 1 Q33 1 33 14 Q31 5 20 4 Q9 5 7 14" fill={hairColor} />}
+      {hairStyle === 'casual'      && <path d="M7 16 Q6 0 20 0 Q34 0 33 16 Q31 4 20 3 Q9 4 7 16" fill={hairColor} />}
       {hairStyle === 'spiky' && (
         <g fill={hairColor}>
           <path d="M7 14 Q9 3 20 2 Q31 3 33 14 Q30 6 20 5 Q10 6 7 14" />
-          <path d="M10 8 L12 0 L14 8" />
-          <path d="M17 6 L20 -1 L23 6" />
-          <path d="M26 8 L28 0 L30 8" />
+          <path d="M10 8 L12 0 L14 8" /><path d="M17 6 L20 -1 L23 6" /><path d="M26 8 L28 0 L30 8" />
         </g>
       )}
       {hairStyle === 'hoodie' && (
@@ -272,44 +342,27 @@ function HumanFigure({ cfg, estado }: { cfg: PersonajeCfg; estado: EstadoAnim })
           <path d="M34 13 Q37 8 36 4 Q34 1 30 4 Q32 9 34 13" fill={hairColor} />
         </g>
       )}
-      {hairStyle === 'short' && (
-        <path d="M7 14 Q8 4 20 3 Q32 4 33 14 Q31 7 20 6 Q9 7 7 14" fill={hairColor} />
-      )}
-
-      {/* Mejillas al hablar o celebrar */}
+      {hairStyle === 'short' && <path d="M7 14 Q8 4 20 3 Q32 4 33 14 Q31 7 20 6 Q9 7 7 14" fill={hairColor} />}
       {(isCelebrating || isTalking) && (
         <>
           <circle cx="11" cy="17" r="3.5" fill="#ff8fab" opacity="0.28" />
           <circle cx="29" cy="17" r="3.5" fill="#ff8fab" opacity="0.28" />
         </>
       )}
-
-      {/* Cejas */}
       <path d={leftBrow}  stroke={hairColor} strokeWidth="1.4" fill="none" strokeLinecap="round" />
       <path d={rightBrow} stroke={hairColor} strokeWidth="1.4" fill="none" strokeLinecap="round" />
-
-      {/* Ojos: blanco + iris + pupila + reflejo */}
       <ellipse cx="15" cy="15" rx="3.5" ry="2.8" fill="white" opacity="0.97" />
       <ellipse cx="25" cy="15" rx="3.5" ry="2.8" fill="white" opacity="0.97" />
-      <circle cx="15" cy="15" r="2.2" fill={eyeColor} />
-      <circle cx="25" cy="15" r="2.2" fill={eyeColor} />
-      <circle cx="15" cy="15" r="1.35" fill="#1a1a2e" />
-      <circle cx="25" cy="15" r="1.35" fill="#1a1a2e" />
+      <circle cx="15" cy="15" r="2.2" fill={eyeColor} /><circle cx="25" cy="15" r="2.2" fill={eyeColor} />
+      <circle cx="15" cy="15" r="1.35" fill="#1a1a2e" /><circle cx="25" cy="15" r="1.35" fill="#1a1a2e" />
       <circle cx="15.7" cy="14.2" r="0.72" fill="white" opacity="0.9" />
       <circle cx="25.7" cy="14.2" r="0.72" fill="white" opacity="0.9" />
-
-      {/* Nariz (puntos sutiles) */}
       <circle cx="18.7" cy="18.8" r="0.7" fill={shadowColor} opacity="1.2" />
       <circle cx="21.3" cy="18.8" r="0.7" fill={shadowColor} opacity="1.2" />
-
-      {/* Boca */}
       <path d={mouthCurve} stroke="#c2774d" strokeWidth="1.5" fill={isCelebrating ? 'rgba(255,150,100,0.2)' : 'none'} strokeLinecap="round" />
-
-      {/* ── Accesorios ── */}
       {accessory === 'glasses' && (
         <g stroke="#4a4a4a" strokeWidth="0.9" fill="none" opacity="0.9">
-          <circle cx="15" cy="15" r="4.5" />
-          <circle cx="25" cy="15" r="4.5" />
+          <circle cx="15" cy="15" r="4.5" /><circle cx="25" cy="15" r="4.5" />
           <line x1="19.5" y1="15" x2="20.5" y2="15" />
           <line x1="7" y1="15" x2="10.5" y2="15" />
           <line x1="29.5" y1="15" x2="33" y2="15" />
@@ -318,9 +371,9 @@ function HumanFigure({ cfg, estado }: { cfg: PersonajeCfg; estado: EstadoAnim })
       {accessory === 'headset' && (
         <g fill={color} stroke={color} strokeWidth="0.4">
           <path d="M7 14 Q20 2 33 14" fill="none" strokeWidth="2.2" />
-          <ellipse cx="7"  cy="15" rx="3"   ry="3.5" />
-          <ellipse cx="33" cy="15" rx="3"   ry="3.5" />
-          <path d="M7 18 Q3 22 3 25"  fill="none" strokeWidth="1.6" />
+          <ellipse cx="7"  cy="15" rx="3" ry="3.5" />
+          <ellipse cx="33" cy="15" rx="3" ry="3.5" />
+          <path d="M7 18 Q3 22 3 25" fill="none" strokeWidth="1.6" />
           <circle cx="3" cy="25" r="1.8" />
         </g>
       )}
@@ -345,18 +398,74 @@ function HumanFigure({ cfg, estado }: { cfg: PersonajeCfg; estado: EstadoAnim })
   );
 }
 
-// ── Card de agente con actividad lounge ──────────────────────────────────────
+// ── Avatar emoji (estilos animales / mixto) ───────────────────────────────────
+function EmojiAvatar({ cfg, estado, emoji }: { cfg: PersonajeCfg; estado: EstadoAnim; emoji: string }) {
+  const isActive = atDesk(estado);
+  return (
+    <div style={{ width: 40, height: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+      {isActive && (
+        <div style={{ position:'absolute', bottom:0, left:'50%', transform:'translateX(-50%)', width:28, height:5, borderRadius:'50%', background:cfg.color, opacity:0.22 }} />
+      )}
+      <div style={{
+        width: 38, height: 42,
+        background: `linear-gradient(135deg, ${cfg.color}28, ${cfg.color}14)`,
+        border: `2px solid ${cfg.color}55`,
+        borderRadius: '50% 50% 35% 35%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 24,
+        boxShadow: isActive
+          ? `0 0 14px ${cfg.color}44, inset 0 0 8px ${cfg.color}18`
+          : '0 2px 6px rgba(0,0,0,0.08)',
+        flexShrink: 0,
+      }}>
+        {emoji}
+      </div>
+      <div style={{ display:'flex', gap:5, marginTop:1 }}>
+        <div style={{ width:5, height:12, background:cfg.color, opacity:0.55, borderRadius:'0 0 3px 3px' }} />
+        <div style={{ width:5, height:12, background:cfg.color, opacity:0.55, borderRadius:'0 0 3px 3px' }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Slot de agente fantasma ───────────────────────────────────────────────────
+function GhostAgentSlot({ agenteId, primaryNombre, estilo }: { agenteId: string; primaryNombre: string; estilo: EstiloAvatares }) {
+  const cfg = PERSONAJES[agenteId];
+  if (!cfg) return null;
+  const emojiData = AVATAR_EMOJIS[agenteId];
+  const ghostEmoji = estilo === 'animales' ? emojiData?.animal : emojiData?.mixto;
+  return (
+    <div className="relative flex flex-col items-center pointer-events-none select-none sims-ghost" style={{ width: 62 }}>
+      <div className="absolute z-10 pointer-events-none" style={{ top: -18, left: '50%', transform: 'translateX(-50%)' }}>
+        <div className="text-[7px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap flex items-center gap-0.5"
+          style={{ background: '#fef9c3', color: '#92400e', border: '1px solid #fde047', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
+          ⏳ {primaryNombre.slice(0, 12)}
+        </div>
+      </div>
+      <div className="sims-avatar-idle">
+        {estilo === 'humanos' || !ghostEmoji
+          ? <HumanFigure cfg={cfg} estado="idle" />
+          : <EmojiAvatar cfg={cfg} estado="idle" emoji={ghostEmoji} />
+        }
+      </div>
+      <div className="mt-0.5 px-1.5 py-0.5 rounded-lg text-center"
+        style={{ background: 'rgba(0,0,0,0.08)', maxWidth: 62 }}>
+        <p className="text-[8px] font-bold truncate" style={{ color: '#64748b' }}>{cfg.nombre}</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Card de agente ────────────────────────────────────────────────────────────
 function AgenteCard({
-  id, cfg, estado, selected, onClick,
-}: { id: string; cfg: PersonajeCfg; estado: EstadoAnim; selected: boolean; onClick: () => void }) {
-  const activo      = atDesk(estado);
-  const enLounge    = !activo && estado !== 'caminando';
-  const loungeAct   = enLounge ? getLoungeActivity(cfg.loungeSlot) : 'idle';
+  id, cfg, estado, selected, onClick, estilo,
+}: { id: string; cfg: PersonajeCfg; estado: EstadoAnim; selected: boolean; onClick: () => void; estilo: EstiloAvatares }) {
+  const activo    = atDesk(estado);
+  const enLounge  = !activo && estado !== 'caminando';
+  const loungeAct = enLounge ? getLoungeActivity(cfg.loungeSlot) : 'idle';
 
   return (
     <div className="relative cursor-pointer group select-none flex flex-col items-center" onClick={onClick} style={{ width: 62 }}>
-
-      {/* Globo de diálogo */}
       {estado === 'hablando' && (
         <div className="absolute z-40 pointer-events-none" style={{ bottom: '100%', marginBottom: 4, left: '50%', transform: 'translateX(-50%)' }}>
           <div className="sims-burbuja text-[9px] px-2 py-1 rounded-xl font-semibold whitespace-nowrap"
@@ -366,21 +475,15 @@ function AgenteCard({
           <div className="mx-auto" style={{ width:0, height:0, borderLeft:'5px solid transparent', borderRight:'5px solid transparent', borderTop:`5px solid ${cfg.color}` }} />
         </div>
       )}
-
-      {/* Confeti al celebrar */}
       {estado === 'celebrando' && (
         <div className="absolute pointer-events-none sims-confeti text-base" style={{ bottom: '100%', left:'50%', transform:'translateX(-50%)', marginBottom:2 }}>
           🎉
         </div>
       )}
-
-      {/* Indicador activo */}
       {activo && (
-        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-slate-900 animate-pulse z-30"
+        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white animate-pulse z-30"
           style={{ background: cfg.color }} />
       )}
-
-      {/* Actividades lounge */}
       {enLounge && loungeAct === 'sleeping' && (
         <div className="absolute pointer-events-none flex gap-0.5" style={{ bottom: '100%', left: '55%', marginBottom: 0 }}>
           <span className="sims-zzz text-[9px]">z</span>
@@ -403,26 +506,26 @@ function AgenteCard({
           <span className="sims-tomando-cafe">☕</span>
         </div>
       )}
-
-      {/* Figura principal */}
       <div className={`sims-avatar-${estado}`}>
-        <HumanFigure cfg={cfg} estado={estado} />
+        {estilo === 'humanos' || !AVATAR_EMOJIS[id]
+          ? <HumanFigure cfg={cfg} estado={estado} />
+          : <EmojiAvatar cfg={cfg} estado={estado} emoji={(estilo === 'animales' ? AVATAR_EMOJIS[id]?.animal : AVATAR_EMOJIS[id]?.mixto) ?? ''} />
+        }
       </div>
-
       {/* Badge nombre */}
       <div className="mt-0.5 px-1.5 py-0.5 rounded-lg text-center" style={{
-        background: activo ? `${cfg.color}30` : 'rgba(0,0,0,0.6)',
-        border: selected ? `1px solid ${cfg.color}` : 'none',
+        background: activo ? `${cfg.color}22` : 'rgba(255,255,255,0.82)',
+        border: selected ? `1.5px solid ${cfg.color}` : '1px solid rgba(0,0,0,0.08)',
+        boxShadow: selected ? `0 0 0 2px ${cfg.color}30` : 'none',
         maxWidth: 62,
       }}>
-        <p className="text-[8px] font-bold truncate" style={{ color: activo ? cfg.accent : '#94a3b8' }}>
+        <p className="text-[8px] font-bold truncate" style={{ color: activo ? cfg.colorDark : '#475569' }}>
           {cfg.nombre}
         </p>
       </div>
-
-      {/* Tooltip hover */}
+      {/* Tooltip */}
       <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50 w-48 pointer-events-none">
-        <div className="rounded-2xl p-3 shadow-2xl border" style={{ background:'#0f172a', borderColor:`${cfg.color}55` }}>
+        <div className="rounded-2xl p-3 shadow-2xl border" style={{ background:'#1e293b', borderColor:`${cfg.color}55` }}>
           <div className="flex items-center gap-2 mb-1.5">
             <div className="w-8 h-8 rounded-xl flex-none flex items-center justify-center" style={{ background:`${cfg.color}22`, border:`1px solid ${cfg.color}44` }}>
               <span style={{ fontSize: 16 }}>{cfg.roleEmoji}</span>
@@ -448,165 +551,127 @@ function LoungeDecorations() {
   return (
     <>
       {/* Label zona */}
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-center" style={{ height:30, borderBottom:'1px solid rgba(251,191,36,0.08)', zIndex:1 }}>
-        <p style={{ color:'rgba(251,191,36,0.3)', fontSize:7, fontWeight:700, letterSpacing:4, textTransform:'uppercase' }}>
-          🏠 Lounge
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-center" style={{ height: 32, borderBottom: '1px solid rgba(180,140,50,0.18)', zIndex: 1 }}>
+        <p style={{ color: 'rgba(146,64,14,0.5)', fontSize: 7, fontWeight: 700, letterSpacing: 4, textTransform: 'uppercase' }}>
+          🏠 Sala de Descanso
         </p>
       </div>
 
-      {/* ── Alfombra central ── */}
+      {/* Alfombra */}
       <div className="absolute" style={{ left:'8%', bottom:55, width:'84%', height:80, borderRadius:18,
-        background:'radial-gradient(ellipse at center, rgba(120,53,15,0.22) 0%, rgba(80,30,5,0.1) 100%)',
-        border:'1px solid rgba(180,100,30,0.14)' }} />
+        background:'radial-gradient(ellipse at center, rgba(120,53,15,0.15) 0%, rgba(80,30,5,0.06) 100%)',
+        border:'1px solid rgba(180,100,30,0.12)' }} />
 
-      {/* ── Sofá grande con respaldo y brazos ── */}
+      {/* Sofá */}
       <div className="absolute" style={{ left:'4%', bottom:60 }}>
-        {/* Respaldo */}
-        <div style={{ width:82, height:22, background:'linear-gradient(160deg,rgba(146,64,14,0.82),rgba(92,40,10,0.9))',
-          border:'1px solid rgba(200,90,20,0.4)', borderRadius:'8px 8px 0 0',
-          boxShadow:'0 -2px 8px rgba(0,0,0,0.4)', position:'relative' }}>
-          {/* Detalle costura */}
-          <div style={{ position:'absolute', top:5, left:8, right:8, height:1, borderRadius:1, background:'rgba(220,130,40,0.2)' }} />
-          <div style={{ position:'absolute', top:12, left:8, right:8, height:1, borderRadius:1, background:'rgba(220,130,40,0.2)' }} />
+        <div style={{ width:82, height:22, background:'linear-gradient(160deg,rgba(180,100,40,0.78),rgba(140,70,20,0.85))',
+          border:'1px solid rgba(200,120,40,0.35)', borderRadius:'8px 8px 0 0', boxShadow:'0 -2px 8px rgba(0,0,0,0.12)' }}>
+          <div style={{ position:'absolute', top:5, left:8, right:8, height:1, background:'rgba(220,160,60,0.2)', borderRadius:1 }} />
+          <div style={{ position:'absolute', top:12, left:8, right:8, height:1, background:'rgba(220,160,60,0.2)', borderRadius:1 }} />
         </div>
-        {/* Asiento */}
-        <div style={{ width:82, height:16, background:'linear-gradient(180deg,rgba(160,75,20,0.78),rgba(110,50,10,0.88))',
-          border:'1px solid rgba(200,90,20,0.35)', position:'relative', zIndex:2 }}>
-          {/* Cojines */}
+        <div style={{ width:82, height:16, background:'linear-gradient(180deg,rgba(195,110,40,0.72),rgba(155,80,25,0.82))',
+          border:'1px solid rgba(200,110,35,0.3)', position:'relative', zIndex:2 }}>
           <div className="flex gap-1 px-1.5 pt-1">
             {[0,1,2].map(i => (
-              <div key={i} style={{ flex:1, height:10, background:'rgba(180,100,30,0.5)',
-                border:'1px solid rgba(230,130,40,0.25)', borderRadius:'3px 3px 0 0' }} />
+              <div key={i} style={{ flex:1, height:10, background:'rgba(205,130,50,0.45)', border:'1px solid rgba(230,150,50,0.22)', borderRadius:'3px 3px 0 0' }} />
             ))}
           </div>
         </div>
-        {/* Brazos */}
-        <div style={{ position:'absolute', left:-7, top:5, width:9, height:28, background:'rgba(120,55,12,0.85)',
-          border:'1px solid rgba(180,90,20,0.4)', borderRadius:'5px 0 0 5px' }} />
-        <div style={{ position:'absolute', right:-7, top:5, width:9, height:28, background:'rgba(120,55,12,0.85)',
-          border:'1px solid rgba(180,90,20,0.4)', borderRadius:'0 5px 5px 0' }} />
-        {/* Patas */}
+        <div style={{ position:'absolute', left:-7, top:5, width:9, height:28, background:'rgba(150,80,25,0.8)', border:'1px solid rgba(180,100,30,0.35)', borderRadius:'5px 0 0 5px' }} />
+        <div style={{ position:'absolute', right:-7, top:5, width:9, height:28, background:'rgba(150,80,25,0.8)', border:'1px solid rgba(180,100,30,0.35)', borderRadius:'0 5px 5px 0' }} />
         <div className="flex justify-between px-2">
-          {[0,1].map(i => (
-            <div key={i} style={{ width:4, height:7, background:'rgba(60,25,5,0.9)', borderRadius:'0 0 2px 2px' }} />
-          ))}
+          {[0,1].map(i => <div key={i} style={{ width:4, height:7, background:'rgba(90,45,10,0.85)', borderRadius:'0 0 2px 2px' }} />)}
         </div>
         {/* Mesa de café */}
-        <div style={{ width:70, height:8, background:'linear-gradient(135deg,rgba(92,40,10,0.65),rgba(70,30,5,0.7))',
-          border:'1px solid rgba(140,60,15,0.35)', borderRadius:3, marginTop:10, marginLeft:6,
-          boxShadow:'0 3px 0 rgba(0,0,0,0.35)', position:'relative' }}>
-          {/* Objetos sobre la mesa */}
+        <div style={{ width:70, height:8, background:'linear-gradient(135deg,rgba(120,70,20,0.6),rgba(90,50,10,0.65))',
+          border:'1px solid rgba(160,90,25,0.3)', borderRadius:3, marginTop:10, marginLeft:6,
+          boxShadow:'0 3px 0 rgba(0,0,0,0.2)', position:'relative' }}>
           <span style={{ position:'absolute', top:-7, left:5, fontSize:9 }}>☕</span>
           <span style={{ position:'absolute', top:-7, left:24, fontSize:9 }}>📱</span>
         </div>
-        <div style={{ width:55, height:3, margin:'0 auto', background:'rgba(50,22,3,0.65)' }} />
+        <div style={{ width:55, height:3, margin:'0 auto', background:'rgba(80,40,5,0.5)' }} />
         <div className="flex justify-between" style={{ padding:'0 14px' }}>
-          {[0,1].map(i => <div key={i} style={{ width:3, height:6, background:'rgba(40,18,2,0.8)' }} />)}
+          {[0,1].map(i => <div key={i} style={{ width:3, height:6, background:'rgba(60,28,4,0.7)' }} />)}
         </div>
       </div>
 
-      {/* ── Mesa de futbolito grande ── */}
+      {/* Mesa de futbolito */}
       <div className="absolute" style={{ left:'35%', top:'18%' }}>
-        {/* Bordes/estructura */}
-        <div style={{ width:108, height:8, background:'linear-gradient(90deg,rgba(120,53,15,0.9),rgba(92,40,10,0.85))',
-          borderRadius:'4px 4px 0 0', border:'1px solid rgba(180,90,20,0.5)' }} />
-        {/* Superficie verde */}
+        <div style={{ width:108, height:8, background:'linear-gradient(90deg,rgba(150,80,25,0.85),rgba(120,65,20,0.8))',
+          borderRadius:'4px 4px 0 0', border:'1px solid rgba(190,110,35,0.45)' }} />
         <div style={{ width:108, height:68, background:'linear-gradient(160deg,#166534,#15803d)',
-          border:'2px solid rgba(74,222,128,0.22)', position:'relative',
-          boxShadow:'inset 0 0 16px rgba(0,0,0,0.3), 0 4px 0 rgba(0,0,0,0.45)' }}>
-          {/* Líneas campo */}
-          <div style={{ position:'absolute', left:'50%', top:4, bottom:4, width:1, background:'rgba(74,222,128,0.35)' }} />
-          <div style={{ position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)', width:20, height:20, border:'1px solid rgba(74,222,128,0.3)', borderRadius:'50%' }} />
-          {/* Porterías */}
-          <div style={{ position:'absolute', left:2, top:'25%', width:5, height:'50%', background:'rgba(253,224,71,0.4)', borderRadius:1 }} />
-          <div style={{ position:'absolute', right:2, top:'25%', width:5, height:'50%', background:'rgba(253,224,71,0.4)', borderRadius:1 }} />
-          {/* Barras */}
+          border:'2px solid rgba(74,222,128,0.2)', position:'relative',
+          boxShadow:'inset 0 0 16px rgba(0,0,0,0.25), 0 4px 0 rgba(0,0,0,0.35)' }}>
+          <div style={{ position:'absolute', left:'50%', top:4, bottom:4, width:1, background:'rgba(74,222,128,0.3)' }} />
+          <div style={{ position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)', width:20, height:20, border:'1px solid rgba(74,222,128,0.25)', borderRadius:'50%' }} />
+          <div style={{ position:'absolute', left:2, top:'25%', width:5, height:'50%', background:'rgba(253,224,71,0.35)', borderRadius:1 }} />
+          <div style={{ position:'absolute', right:2, top:'25%', width:5, height:'50%', background:'rgba(253,224,71,0.35)', borderRadius:1 }} />
           {[16,32,54,72,90].map((x,i) => (
-            <div key={i} style={{ position:'absolute', left:x, top:-8, bottom:-8, width:2.5, background:'rgba(200,200,200,0.5)', borderRadius:1 }}>
+            <div key={i} style={{ position:'absolute', left:x, top:-8, bottom:-8, width:2.5, background:'rgba(200,200,200,0.45)', borderRadius:1 }}>
               {[14,36,58].slice(0, i%2===0 ? 3 : 2).map((y,j) => (
                 <div key={j} style={{ position:'absolute', top:y, left:-4, width:10, height:10, borderRadius:'50%',
-                  background: i<3 ? 'rgba(59,130,246,0.85)' : 'rgba(239,68,68,0.85)',
-                  border:'1px solid rgba(255,255,255,0.3)', boxShadow:'0 1px 3px rgba(0,0,0,0.4)' }} />
+                  background: i<3 ? 'rgba(59,130,246,0.8)' : 'rgba(239,68,68,0.8)',
+                  border:'1px solid rgba(255,255,255,0.25)', boxShadow:'0 1px 3px rgba(0,0,0,0.35)' }} />
               ))}
             </div>
           ))}
-          {/* Pelota */}
-          <div style={{ position:'absolute', left:'47%', top:'44%', width:7, height:7, borderRadius:'50%', background:'white', boxShadow:'0 0 4px rgba(0,0,0,0.5)' }} />
+          <div style={{ position:'absolute', left:'47%', top:'44%', width:7, height:7, borderRadius:'50%', background:'white', boxShadow:'0 0 4px rgba(0,0,0,0.4)' }} />
         </div>
-        {/* Base */}
-        <div style={{ width:108, height:10, background:'linear-gradient(90deg,rgba(100,45,10,0.88),rgba(80,35,8,0.9))',
-          borderRadius:'0 0 4px 4px', border:'1px solid rgba(160,80,15,0.4)', boxShadow:'0 3px 6px rgba(0,0,0,0.35)' }} />
-        {/* Patas */}
+        <div style={{ width:108, height:10, background:'linear-gradient(90deg,rgba(130,70,18,0.82),rgba(100,55,12,0.85))',
+          borderRadius:'0 0 4px 4px', border:'1px solid rgba(170,100,20,0.35)', boxShadow:'0 3px 6px rgba(0,0,0,0.25)' }} />
         <div className="flex justify-between px-3">
-          {[0,1].map(i => <div key={i} style={{ width:6, height:16, background:'rgba(70,30,5,0.9)', borderRadius:'0 0 3px 3px', boxShadow:'2px 0 4px rgba(0,0,0,0.3)' }} />)}
+          {[0,1].map(i => <div key={i} style={{ width:6, height:16, background:'rgba(80,40,8,0.85)', borderRadius:'0 0 3px 3px' }} />)}
         </div>
       </div>
 
-      {/* ── Vending Machine grande ── */}
+      {/* Máquina vending */}
       <div className="absolute" style={{ right:8, top:'8%' }}>
-        <div style={{ width:46, height:84, background:'linear-gradient(180deg,#1e293b,#0f172a)',
-          border:'2px solid rgba(99,102,241,0.45)', borderRadius:7, position:'relative',
-          boxShadow:'4px 4px 0 rgba(0,0,0,0.5), 0 8px 20px rgba(0,0,0,0.4)' }}>
-          {/* Luz superior */}
-          <div style={{ height:6, margin:'4px 4px 0', background:'linear-gradient(90deg,rgba(99,102,241,0.5),rgba(139,92,246,0.6))',
-            borderRadius:'4px 4px 2px 2px', boxShadow:'0 0 8px rgba(99,102,241,0.4)' }} />
-          {/* Pantalla/display */}
-          <div style={{ margin:'4px 4px 0', height:26, background:'linear-gradient(135deg,#1e3a5f,#0d2137)',
-            border:'1px solid rgba(59,130,246,0.5)', borderRadius:4,
+        <div style={{ width:46, height:84, background:'linear-gradient(180deg,#f0fdf4,#dcfce7)',
+          border:'2px solid rgba(34,197,94,0.4)', borderRadius:7, position:'relative',
+          boxShadow:'3px 3px 0 rgba(0,0,0,0.1), 0 6px 16px rgba(0,0,0,0.1)' }}>
+          <div style={{ height:6, margin:'4px 4px 0', background:'linear-gradient(90deg,rgba(34,197,94,0.5),rgba(22,163,74,0.6))', borderRadius:'4px 4px 2px 2px' }} />
+          <div style={{ margin:'4px 4px 0', height:26, background:'linear-gradient(135deg,#f0fdf4,#dcfce7)',
+            border:'1px solid rgba(34,197,94,0.4)', borderRadius:4,
             display:'flex', flexWrap:'wrap', gap:3, padding:3, justifyContent:'center', alignItems:'center' }}>
-            {['☕','🥤','🍵','🧃'].map((e,i) => (
-              <span key={i} style={{ fontSize:8 }}>{e}</span>
-            ))}
+            {['☕','🥤','🍵','🧃'].map((e,i) => <span key={i} style={{ fontSize:8 }}>{e}</span>)}
           </div>
-          {/* Botones */}
           <div style={{ margin:'5px 7px 0', display:'grid', gridTemplateColumns:'1fr 1fr', gap:3.5 }}>
             {[0,1,2,3,4,5].map(i => (
-              <div key={i} style={{ height:7, background: i===0||i===3 ? 'rgba(99,102,241,0.65)' : 'rgba(51,65,85,0.7)',
-                borderRadius:2, border:'1px solid rgba(255,255,255,0.1)' }} />
+              <div key={i} style={{ height:7, background: i===0||i===3 ? 'rgba(34,197,94,0.5)' : 'rgba(220,240,220,0.7)',
+                borderRadius:2, border:'1px solid rgba(34,197,94,0.2)' }} />
             ))}
           </div>
-          {/* Ranura monedas */}
-          <div style={{ margin:'6px auto 0', width:18, height:2.5, background:'rgba(0,0,0,0.7)',
-            borderRadius:1, border:'1px solid rgba(148,163,184,0.3)' }} />
-          {/* Indicador LED */}
-          <div style={{ position:'absolute', bottom:14, left:'50%', transform:'translateX(-50%)', width:6, height:6,
-            borderRadius:'50%', background:'#22c55e', boxShadow:'0 0 8px #22c55e99' }} />
-          {/* Ranura producto */}
-          <div style={{ position:'absolute', bottom:4, left:5, right:5, height:12, background:'rgba(0,0,0,0.55)',
-            borderRadius:'0 0 5px 5px', border:'1px solid rgba(148,163,184,0.18)' }} />
+          <div style={{ margin:'6px auto 0', width:18, height:2.5, background:'rgba(0,0,0,0.12)', borderRadius:1, border:'1px solid rgba(34,197,94,0.2)' }} />
+          <div style={{ position:'absolute', bottom:14, left:'50%', transform:'translateX(-50%)', width:6, height:6, borderRadius:'50%', background:'#22c55e', boxShadow:'0 0 6px #22c55e88' }} />
+          <div style={{ position:'absolute', bottom:4, left:5, right:5, height:12, background:'rgba(0,0,0,0.06)', borderRadius:'0 0 5px 5px', border:'1px solid rgba(34,197,94,0.15)' }} />
         </div>
       </div>
 
-      {/* ── Planta grande ── */}
+      {/* Planta */}
       <div className="absolute" style={{ right:58, bottom:14 }}>
         <div style={{ position:'relative' }}>
-          <div style={{ width:14, height:20, background:'rgba(34,197,94,0.5)', borderRadius:'50% 50% 20% 20%', marginBottom:1 }} />
-          <div style={{ width:10, height:8, background:'rgba(21,128,61,0.4)', borderRadius:'50% 50% 20% 20%', position:'absolute', top:-5, left:8, transform:'rotate(30deg)' }} />
-          <div style={{ width:10, height:8, background:'rgba(21,128,61,0.4)', borderRadius:'50% 50% 20% 20%', position:'absolute', top:-4, left:-4, transform:'rotate(-25deg)' }} />
-          <div style={{ width:12, height:10, background:'rgba(120,53,15,0.7)', borderRadius:'2px 2px 4px 4px', margin:'0 auto' }} />
+          <div style={{ width:14, height:20, background:'rgba(34,197,94,0.45)', borderRadius:'50% 50% 20% 20%', marginBottom:1 }} />
+          <div style={{ width:10, height:8, background:'rgba(21,128,61,0.38)', borderRadius:'50% 50% 20% 20%', position:'absolute', top:-5, left:8, transform:'rotate(30deg)' }} />
+          <div style={{ width:10, height:8, background:'rgba(21,128,61,0.38)', borderRadius:'50% 50% 20% 20%', position:'absolute', top:-4, left:-4, transform:'rotate(-25deg)' }} />
+          <div style={{ width:12, height:10, background:'rgba(180,120,60,0.55)', borderRadius:'2px 2px 4px 4px', margin:'0 auto' }} />
         </div>
       </div>
 
-      {/* ── Lámpara de pie ── */}
+      {/* Lámpara */}
       <div className="absolute" style={{ left:'5%', top:'14%' }}>
-        <div style={{ width:22, height:14, background:'linear-gradient(180deg,rgba(251,191,36,0.18),rgba(251,191,36,0.06))',
-          borderRadius:'50% 50% 30% 30%', border:'1px solid rgba(251,191,36,0.25)',
-          boxShadow:'0 0 16px rgba(251,191,36,0.12)', marginBottom:0 }} />
-        <div style={{ width:2, height:34, background:'rgba(148,163,184,0.4)', margin:'0 auto' }} />
-        <div style={{ width:18, height:3, background:'rgba(100,116,139,0.5)', borderRadius:2, margin:'0 auto' }} />
-        {/* Halo de luz en el suelo */}
-        <div style={{ position:'absolute', bottom:-4, left:'50%', transform:'translateX(-50%)', width:32, height:6,
-          background:'radial-gradient(ellipse at center, rgba(251,191,36,0.1) 0%, transparent 70%)', borderRadius:'50%' }} />
+        <div style={{ width:22, height:14, background:'linear-gradient(180deg,rgba(251,191,36,0.22),rgba(251,191,36,0.08))',
+          borderRadius:'50% 50% 30% 30%', border:'1px solid rgba(251,191,36,0.3)',
+          boxShadow:'0 0 16px rgba(251,191,36,0.15)', marginBottom:0 }} />
+        <div style={{ width:2, height:34, background:'rgba(180,160,120,0.45)', margin:'0 auto' }} />
+        <div style={{ width:18, height:3, background:'rgba(180,160,120,0.4)', borderRadius:2, margin:'0 auto' }} />
       </div>
     </>
   );
 }
 
-// ── Pasos del plan de ejecución ───────────────────────────────────────────────
+// ── Parser plan ───────────────────────────────────────────────────────────────
 function parsePlanSteps(plan: string): string[] {
   if (!plan) return [];
-
-  // Formato "=== PASO N — Descripción ===" (generado por el PM)
   const pasoHeaderRe = /^===\s*PASO\s+(\d+)\s*[—–\-]\s*(.+?)\s*===\s*$/gim;
   const headers: string[] = [];
   let m;
@@ -614,28 +679,10 @@ function parsePlanSteps(plan: string): string[] {
     headers.push(`Paso ${m[1]}: ${(m[2] ?? '').trim()}`);
   }
   if (headers.length > 0) return headers;
-
-  // Fallback: listas numeradas o con viñetas
   const sinEncabezados = plan.replace(/^===.*===\s*$/gm, '');
-  return sinEncabezados
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l =>
-      /^\d+[\.\)\-]\s+\S/.test(l)        ||
-      /^\*\*\d+[\.\)]\*?\*?\s+\S/.test(l) ||
-      /^[-*•]\s+\S/.test(l)               ||
-      /^Paso\s+\d+/i.test(l)              ||
-      /^Step\s+\d+/i.test(l)
-    )
-    .map(l => l
-      .replace(/^\d+[\.\)\-]\s*/, '')
-      .replace(/^\*\*\d+[\.\)]\*?\*?\s*/, '')
-      .replace(/^[-*•]\s*/, '')
-      .replace(/^Paso\s+\d+[\.\:\-]?\s*/i, '')
-      .replace(/^Step\s+\d+[\.\:\-]?\s*/i, '')
-      .replace(/\*\*/g, '')
-      .trim()
-    )
+  return sinEncabezados.split('\n').map(l => l.trim())
+    .filter(l => /^\d+[\.\)\-]\s+\S/.test(l) || /^\*\*\d+[\.\)]\*?\*?\s+\S/.test(l) || /^[-*•]\s+\S/.test(l) || /^Paso\s+\d+/i.test(l) || /^Step\s+\d+/i.test(l))
+    .map(l => l.replace(/^\d+[\.\)\-]\s*/, '').replace(/^\*\*\d+[\.\)]\*?\*?\s*/, '').replace(/^[-*•]\s*/, '').replace(/^Paso\s+\d+[\.\:\-]?\s*/i, '').replace(/^Step\s+\d+[\.\:\-]?\s*/i, '').replace(/\*\*/g, '').trim())
     .filter(l => l.length > 4);
 }
 
@@ -648,45 +695,44 @@ async function ejecutarTareaAPI(tareaId: string, reanudar = false) {
 }
 
 async function cambiarEstadoTareaAPI(tareaId: string, nuevoEstado: string) {
-  const { createClient } = await import('@/lib/supabase/client');
-  const sb = createClient() as any;
+  const { createClient: cc } = await import('@/lib/supabase/client');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = cc() as any;
   await sb.from('tareas').update({ estado: nuevoEstado }).eq('id', tareaId);
 }
 
-// Extrae los comandos SSH de las entradas de bitácora de una tarea
 function extraerComandosSSH(bitacora: Entrada[], tareaId: string) {
   return bitacora
     .filter(b => b.tarea_id === tareaId)
     .filter(b => b.accion.startsWith('🖥️') || b.accion.startsWith('📤'))
-    .slice()
-    .reverse(); // cronológico (bitacora viene newest-first)
+    .slice().reverse();
 }
 
-// ── Interfaz papel volador ────────────────────────────────────────────────────
 interface Papel { id: string; de: string; para: string; ts: number }
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasIniciales }: Props) {
   const supabase = createClient();
 
-  const [estados, setEstados]        = useState<Record<string, EstadoAnim>>({});
-  const targetRef                    = useRef<Record<string, EstadoAnim>>({});
-  const [bitacora, setBitacora]      = useState<Entrada[]>(bitacoraInicial);
-  const [tareas, setTareas]          = useState<Tarea[]>(tareasIniciales);
-  const [selId, setSelId]            = useState<string | null>(null);
-  const [papeles, setPapeles]        = useState<Papel[]>([]);
-  const [avatarPending, startAvatar] = useTransition();
-  const [dragId, setDragId]          = useState<string | null>(null);
-  const [ejecutandoId, setEjecutandoId] = useState<string | null>(null);
-  const dragIdRef                    = useRef<string | null>(null);
-  const [dragOver, setDragOver]      = useState<'lounge' | 'sala' | 'pasillo' | null>(null);
-  const dragEnterCount               = useRef<Record<string, number>>({});
-  const [expandedTareaId, setExpandedTareaId] = useState<string | null>(null);
+  const [estados, setEstados]            = useState<Record<string, EstadoAnim>>({});
+  const targetRef                        = useRef<Record<string, EstadoAnim>>({});
+  const [bitacora, setBitacora]          = useState<Entrada[]>(bitacoraInicial);
+  const [tareas, setTareas]              = useState<Tarea[]>(tareasIniciales);
+  const [selId, setSelId]                = useState<string | null>(null);
+  const [papeles, setPapeles]            = useState<Papel[]>([]);
+  const [avatarPending, startAvatar]     = useTransition();
+  const [dragId, setDragId]              = useState<string | null>(null);
+  const [ejecutandoId, setEjecutandoId]  = useState<string | null>(null);
+  const dragIdRef                        = useRef<string | null>(null);
+  const [dragOver, setDragOver]          = useState<string | null>(null);
+  const dragEnterCount                   = useRef<Record<string, number>>({});
+  const [expandedTareaId, setExpandedTareaId]   = useState<string | null>(null);
   const [filtroEmpresaId, setFiltroEmpresaId]   = useState<string>('');
   const [filtroProyectoId, setFiltroProyectoId] = useState<string>('');
   const [filtroEstado, setFiltroEstado]         = useState<string>('');
   const [tareaPage, setTareaPage]               = useState<number>(5);
   const [cambioEstadoId, setCambioEstadoId]     = useState<string | null>(null);
+  const [estiloAvatares, setEstiloAvatares]     = useState<EstiloAvatares>('humanos');
 
   useEffect(() => {
     const map: Record<string, EstadoAnim> = {};
@@ -701,7 +747,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   }, []);
 
   useEffect(() => {
-    const canal = supabase.channel('sims-v5')
+    const canal = supabase.channel('sims-v6')
       .on('postgres_changes', { event: '*', schema:'public', table:'avatares' }, payload => {
         if (payload.eventType !== 'UPDATE' && payload.eventType !== 'INSERT') return;
         const av = payload.new as Avatar;
@@ -724,7 +770,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
       })
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'tareas' }, payload => {
         const updated = payload.new as Tarea;
-        // Preservar datos de proyecto (realtime no incluye joins)
         setTareas(p => p.map(t => t.id === updated.id ? { ...t, ...updated, proyecto: updated.proyecto ?? t.proyecto } : t));
       })
       .subscribe();
@@ -747,10 +792,26 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
     return '#eab308';
   }
 
+  // ── Zonas de empresa dinámicas ────────────────────────────────────────────
+  const companyZones = deriveCompanyZones(tareas);
+
+  const agentesIds = Object.keys(PERSONAJES);
+
+  // Agentes en lounge = los que NO tienen zona de empresa asignada Y no están en tránsito
+  const enLounge = agentesIds.filter(id => {
+    if (getEstado(id) === 'caminando') return false;
+    return !companyZones.some(z => z.agents.includes(id));
+  });
+  const enPasillo = agentesIds.filter(id => getEstado(id) === 'caminando');
+
+  // Agentes trabajando sin zona de empresa (fallback)
+  const enSalaGeneral = agentesIds.filter(id =>
+    atDesk(getEstado(id)) && !companyZones.some(z => z.agents.includes(id))
+  );
+
   const selCfg    = selId ? PERSONAJES[selId] : null;
   const selTareas = tareas.filter(t => t.agente_asignado === selId);
 
-  // ── Derivados para filtros ────────────────────────────────────────────────
   const empresasAgente = [...new Map(
     selTareas.filter(t => t.proyecto?.empresa_id && t.proyecto.empresa?.nombre)
       .map(t => [t.proyecto!.empresa_id, t.proyecto!.empresa!.nombre])
@@ -769,75 +830,109 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   const selTareasVisibles = selTareasFiltradas.slice(0, tareaPage);
   const hayMasTareas = selTareasFiltradas.length > tareaPage;
 
-  const agentesIds = Object.keys(PERSONAJES);
-  const enLounge   = agentesIds.filter(id => !atDesk(getEstado(id)) && getEstado(id) !== 'caminando');
-  const enPasillo  = agentesIds.filter(id => getEstado(id) === 'caminando');
-  const enSala     = agentesIds.filter(id => atDesk(getEstado(id)));
+  // ── Helpers de drag ───────────────────────────────────────────────────────
+  function dragEnterZone(key: string) {
+    dragEnterCount.current[key] = (dragEnterCount.current[key] ?? 0) + 1;
+    setDragOver(key);
+  }
+  function dragLeaveZone(key: string) {
+    dragEnterCount.current[key] = (dragEnterCount.current[key] ?? 1) - 1;
+    if ((dragEnterCount.current[key] ?? 0) <= 0) { dragEnterCount.current[key] = 0; setDragOver(null); }
+  }
+  function dropToLounge(e: React.DragEvent) {
+    e.preventDefault();
+    dragEnterCount.current['lounge'] = 0; setDragOver(null);
+    const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
+    if (!id) return;
+    startAvatar(async () => { await moverAvatarADescanso(id); });
+  }
+  function dropToWork(e: React.DragEvent) {
+    e.preventDefault(); setDragOver(null);
+    const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
+    if (!id || atDesk(getEstado(id))) return;
+    startAvatar(async () => { await reanudarTrabajo(id); });
+  }
 
   return (
     <div className="space-y-4">
 
       {/* ── Escena principal ── */}
       <div className="rounded-3xl overflow-hidden" style={{
-        background:'#07091a',
-        border:'1px solid rgba(99,102,241,0.18)',
-        boxShadow:'0 0 60px rgba(99,102,241,0.06)',
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
       }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom:'1px solid rgba(99,102,241,0.1)', background:'rgba(10,15,30,0.95)' }}>
-          <div className="flex items-center gap-3">
-            <span className="text-lg">🏢</span>
-            <div>
-              <p className="text-sm font-bold text-white">Servicios Agénticos</p>
-              <p className="text-[10px] text-slate-500">
-                {enSala.length} trabajando · {enPasillo.length} en tránsito · {enLounge.length} en lounge
-              </p>
-            </div>
+        <div className="flex items-center gap-3 px-5 py-3" style={{ background: '#fff', borderBottom: '1px solid #e2e8f0' }}>
+          <span className="text-xl">🏢</span>
+          <div>
+            <p className="text-sm font-bold text-slate-800">Servicios Agénticos</p>
+            <p className="text-[10px] text-slate-400">
+              {enSalaGeneral.length + companyZones.reduce((s, z) => s + z.agents.filter(id => atDesk(getEstado(id))).length, 0)} trabajando
+              {' · '}{enPasillo.length} en tránsito
+              {' · '}{enLounge.length} en descanso
+            </p>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            En vivo
+          {/* Pills de empresas activas */}
+          {companyZones.length > 0 && (
+            <div className="flex items-center gap-1.5 ml-3 flex-wrap">
+              {companyZones.map(z => (
+                <div key={z.empresaId} className="flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: z.color.bg, color: z.color.header, border: `1px solid ${z.color.border}50` }}>
+                  🏢 <span className="max-w-[80px] truncate">{z.empresaNombre}</span>
+                  <span className="opacity-60 ml-0.5">({z.agents.length})</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            {/* Toggle estilo de avatares */}
+            <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background:'#f1f5f9', border:'1px solid #e2e8f0' }}>
+              {(['humanos', 'animales', 'mixto'] as EstiloAvatares[]).map(e => (
+                <button key={e} onClick={() => setEstiloAvatares(e)}
+                  title={e === 'humanos' ? 'Profesionales' : e === 'animales' ? 'Animales' : 'Mixto'}
+                  className="text-[11px] font-semibold px-2 py-0.5 rounded-md transition-all"
+                  style={{
+                    background: estiloAvatares === e ? '#1e293b' : 'transparent',
+                    color: estiloAvatares === e ? '#f8fafc' : '#94a3b8',
+                  }}>
+                  {e === 'humanos' ? '👤' : e === 'animales' ? '🐾' : '🤖'}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              En vivo
+            </div>
           </div>
         </div>
 
-        {/* Tres zonas */}
-        <div className="flex" style={{ height:580 }}>
+        {/* Layout de oficina */}
+        <div className="flex overflow-x-auto" style={{ height: 630 }}>
 
           {/* ═══ ZONA 1: LOUNGE ═══ */}
           <div
             className="relative flex-shrink-0 transition-all"
             onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-            onDragEnter={e => {
-              e.preventDefault();
-              dragEnterCount.current['lounge'] = (dragEnterCount.current['lounge'] ?? 0) + 1;
-              setDragOver('lounge');
-            }}
-            onDragLeave={() => {
-              dragEnterCount.current['lounge'] = (dragEnterCount.current['lounge'] ?? 1) - 1;
-              if ((dragEnterCount.current['lounge'] ?? 0) <= 0) { dragEnterCount.current['lounge'] = 0; setDragOver(null); }
-            }}
-            onDrop={e => {
-              e.preventDefault();
-              dragEnterCount.current['lounge'] = 0;
-              setDragOver(null);
-              const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
-              if (!id) return;
-              startAvatar(async () => { await moverAvatarADescanso(id); });
-            }}
+            onDragEnter={e => { e.preventDefault(); dragEnterZone('lounge'); }}
+            onDragLeave={() => dragLeaveZone('lounge')}
+            onDrop={dropToLounge}
             style={{
-              width:'23%',
+              width: 262,
               background: dragOver === 'lounge'
-                ? 'linear-gradient(160deg, #2d1000 0%, #1a0c00 55%, #0a0a1a 100%)'
-                : 'linear-gradient(160deg, #170800 0%, #0f0700 55%, #0a0a1a 100%)',
-              borderRight:`1px solid ${dragOver === 'lounge' ? 'rgba(251,191,36,0.4)' : 'rgba(251,191,36,0.1)'}`,
-              outline: dragOver === 'lounge' ? '2px dashed rgba(251,191,36,0.3)' : 'none',
+                ? 'linear-gradient(160deg,#fef9c3 0%,#fef3c7 60%,#fffbeb 100%)'
+                : 'linear-gradient(160deg,#fef9ee 0%,#fef3c7 60%,#fffbeb 100%)',
+              borderRight: `2px solid ${dragOver === 'lounge' ? '#fbbf24' : '#fde68a'}`,
+              outline: dragOver === 'lounge' ? '2px dashed #f59e0b' : 'none',
             }}>
+            {/* Tile floor */}
             <div className="absolute inset-0 pointer-events-none" style={{
-              background:'radial-gradient(ellipse at 50% 115%, rgba(251,191,36,0.06) 0%, transparent 65%)',
+              backgroundImage: 'linear-gradient(rgba(180,130,60,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(180,130,60,0.06) 1px,transparent 1px)',
+              backgroundSize: '26px 26px',
             }} />
             {dragOver === 'lounge' && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
-                <span style={{ fontSize:28, opacity:0.6 }}>🛋️</span>
+                <span style={{ fontSize: 28, opacity: 0.5 }}>🛋️</span>
               </div>
             )}
             <LoungeDecorations />
@@ -851,7 +946,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                   onDragStart={e => { e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed = 'move'; dragIdRef.current = id; setDragId(id); }}
                   onDragEnd={() => { dragIdRef.current = null; setDragId(null); }}
                   style={{ left:`${pos.x}%`, top:`${pos.y + 5}%`, transform:'translate(-50%, -100%)', zIndex:10, opacity: dragId === id ? 0.5 : 1, cursor:'grab' }}>
-                  <AgenteCard id={id} cfg={cfg} estado={getEstado(id)} selected={selId===id} onClick={() => setSelId(selId===id ? null : id)} />
+                  <AgenteCard id={id} cfg={cfg} estado={getEstado(id)} selected={selId===id} onClick={() => setSelId(selId===id ? null : id)} estilo={estiloAvatares} />
                 </div>
               );
             })}
@@ -859,21 +954,12 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
 
           {/* ═══ ZONA 2: PASILLO ═══ */}
           <div
-            className="relative flex-shrink-0 flex flex-col items-center transition-all"
+            className="relative flex-shrink-0 flex flex-col items-center"
             onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-            onDragEnter={e => {
-              e.preventDefault();
-              dragEnterCount.current['pasillo'] = (dragEnterCount.current['pasillo'] ?? 0) + 1;
-              setDragOver('pasillo');
-            }}
-            onDragLeave={() => {
-              dragEnterCount.current['pasillo'] = (dragEnterCount.current['pasillo'] ?? 1) - 1;
-              if ((dragEnterCount.current['pasillo'] ?? 0) <= 0) { dragEnterCount.current['pasillo'] = 0; setDragOver(null); }
-            }}
+            onDragEnter={e => { e.preventDefault(); dragEnterZone('pasillo'); }}
+            onDragLeave={() => dragLeaveZone('pasillo')}
             onDrop={e => {
-              e.preventDefault();
-              dragEnterCount.current['pasillo'] = 0;
-              setDragOver(null);
+              e.preventDefault(); dragEnterCount.current['pasillo'] = 0; setDragOver(null);
               const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
               if (!id) return;
               if (!atDesk(getEstado(id)) && getEstado(id) !== 'caminando') {
@@ -883,196 +969,285 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
               }
             }}
             style={{
-              width:'6%',
-              background:'linear-gradient(180deg, #080c14 0%, #0b1022 100%)',
-              borderRight:`1px solid ${dragOver === 'pasillo' ? 'rgba(99,102,241,0.4)' : 'rgba(99,102,241,0.1)'}`,
+              width: 40,
+              background: '#f1f5f9',
+              borderRight: `1px solid ${dragOver === 'pasillo' ? '#94a3b8' : '#e2e8f0'}`,
             }}>
-            <p className="text-[7px] font-bold uppercase tracking-widest mt-14 rotate-90 whitespace-nowrap"
-              style={{ color:'rgba(99,102,241,0.22)' }}>Pasillo</p>
-            <div className="absolute top-16 bottom-4 w-px" style={{
-              left:'50%',
-              background:'repeating-linear-gradient(to bottom, rgba(99,102,241,0.16) 0, rgba(99,102,241,0.16) 5px, transparent 5px, transparent 10px)',
+            <p className="absolute" style={{
+              top: '50%', left: '50%',
+              transform: 'translate(-50%,-50%) rotate(-90deg)',
+              fontSize: 6, color: '#94a3b8', fontWeight: 700, letterSpacing: 3, whiteSpace: 'nowrap',
+            }}>PASILLO</p>
+            {/* Línea punteada */}
+            <div className="absolute" style={{
+              left: '50%', top: 30, bottom: 10, width: 1,
+              background: 'repeating-linear-gradient(to bottom,#cbd5e1 0,#cbd5e1 5px,transparent 5px,transparent 10px)',
             }} />
-            {[30,50,70].map(y => (
-              <div key={y} className="absolute text-sm" style={{ top:`${y}%`, left:'50%', transform:'translate(-50%,-50%)', color:'rgba(99,102,241,0.18)' }}>›</div>
-            ))}
             {enPasillo.map((id, i) => {
               const cfg = PERSONAJES[id];
               if (!cfg) return null;
               return (
-                <div key={id} className="absolute transition-all duration-1000" style={{
-                  left:'50%', top:`${18 + i * 20}%`, transform:'translate(-50%, -100%)', zIndex:10,
-                }}>
-                  <AgenteCard id={id} cfg={cfg} estado="caminando" selected={selId===id} onClick={() => setSelId(selId===id ? null : id)} />
+                <div key={id} className="absolute transition-all duration-1000"
+                  style={{ top:`${18 + i * 20}%`, left:'50%', transform:'translate(-50%,-100%)', zIndex:10 }}>
+                  <AgenteCard id={id} cfg={cfg} estado="caminando" selected={selId===id} onClick={() => setSelId(selId===id ? null : id)} estilo={estiloAvatares} />
                 </div>
               );
             })}
           </div>
 
-          {/* ═══ ZONA 3: SALA DE TRABAJO ═══ */}
-          <div
-            className="relative flex-1 transition-all"
-            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-            onDragEnter={e => {
-              e.preventDefault();
-              dragEnterCount.current['sala'] = (dragEnterCount.current['sala'] ?? 0) + 1;
-              setDragOver('sala');
-            }}
-            onDragLeave={() => {
-              dragEnterCount.current['sala'] = (dragEnterCount.current['sala'] ?? 1) - 1;
-              if ((dragEnterCount.current['sala'] ?? 0) <= 0) { dragEnterCount.current['sala'] = 0; setDragOver(null); }
-            }}
-            onDrop={e => {
-              e.preventDefault();
-              dragEnterCount.current['sala'] = 0;
-              setDragOver(null);
-              const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
-              if (!id || atDesk(getEstado(id))) return;
-              startAvatar(async () => { await reanudarTrabajo(id); });
-            }}
-            style={{
-              background: dragOver === 'sala'
-                ? 'linear-gradient(145deg, #071428 0%, #0a1030 50%, #071428 100%)'
-                : 'linear-gradient(145deg, #050d1e 0%, #07091a 50%, #050d1e 100%)',
-              outline: dragOver === 'sala' ? '2px dashed rgba(99,102,241,0.35)' : 'none',
-            }}>
-            <div className="absolute inset-0 pointer-events-none" style={{
-              background:'radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.04) 0%, transparent 55%)',
-            }} />
-            {/* Cuadrícula de suelo */}
-            <div className="absolute inset-0 pointer-events-none" style={{
-              backgroundImage:'linear-gradient(rgba(59,130,246,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.03) 1px,transparent 1px)',
-              backgroundSize:'60px 60px',
-            }} />
+          {/* ═══ ZONAS DE EMPRESA (dinámicas) ═══ */}
+          {companyZones.length > 0 ? (
+            companyZones.map((zone, zi) => (
+              <div key={zone.empresaId}
+                className="relative flex-shrink-0 transition-all"
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                onDragEnter={e => { e.preventDefault(); dragEnterZone(`co-${zone.empresaId}`); }}
+                onDragLeave={() => dragLeaveZone(`co-${zone.empresaId}`)}
+                onDrop={e => {
+                  e.preventDefault(); dragEnterCount.current[`co-${zone.empresaId}`] = 0; setDragOver(null);
+                  const id = dragIdRef.current || e.dataTransfer.getData('text/plain');
+                  if (!id || atDesk(getEstado(id))) return;
+                  startAvatar(async () => { await reanudarTrabajo(id); });
+                }}
+                style={{
+                  width: 228,
+                  background: zone.color.tile,
+                  borderRight: zi < companyZones.length - 1 ? `2px solid ${zone.color.border}30` : 'none',
+                  outline: dragOver === `co-${zone.empresaId}` ? `2px dashed ${zone.color.border}` : 'none',
+                }}>
 
-            {/* Label */}
-            <div className="absolute top-0 left-0 right-0 flex items-center justify-center" style={{ height:30, borderBottom:'1px solid rgba(59,130,246,0.07)' }}>
-              <p style={{ color:'rgba(59,130,246,0.28)', fontSize:7, fontWeight:700, letterSpacing:4, textTransform:'uppercase' }}>
-                💼 Sala de Trabajo
-              </p>
-            </div>
-
-            {/* Escritorios isométricos */}
-            {Object.entries(PERSONAJES).map(([id, cfg]) => {
-              const deskIdx = cfg.deskRow * 4 + cfg.deskCol;
-              const pos     = DESK_POS[deskIdx] ?? { x:50, y:50 };
-              const activo  = atDesk(getEstado(id));
-              return (
-                <div key={`desk-${id}`}
-                  onClick={() => setSelId(selId===id ? null : id)}
-                  className="absolute cursor-pointer transition-all duration-500"
-                  style={{
-                    left:`${pos.x}%`, top:`${pos.y + 8}%`,
-                    transform:'translate(-50%, -50%)',
-                    zIndex:8,
-                  }}>
-                  {/* Escritorio: superficie + frente (efecto 3D) */}
-                  <div style={{
-                    width:72, height:38,
-                    background: activo ? `${cfg.color}18` : 'rgba(14,22,40,0.92)',
-                    border:`1px solid ${activo ? `${cfg.color}60` : 'rgba(51,65,85,0.45)'}`,
-                    borderRadius:'5px 5px 3px 3px',
-                    boxShadow: activo
-                      ? `0 0 20px ${cfg.color}30, 0 5px 0 0 rgba(0,0,0,0.45), 0 7px 8px rgba(0,0,0,0.3)`
-                      : '0 4px 0 0 rgba(0,0,0,0.4), 0 6px 6px rgba(0,0,0,0.22)',
-                    display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2,
-                  }}>
-                    {/* Monitor */}
-                    <div style={{
-                      width:42, height:26,
-                      background: activo ? `${cfg.color}28` : 'rgba(8,14,32,0.98)',
-                      border:`1px solid ${activo ? `${cfg.color}60` : 'rgba(30,41,59,0.9)'}`,
-                      borderRadius:3,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      boxShadow: activo ? `inset 0 0 12px ${cfg.color}18` : 'none',
-                    }}>
-                      {activo ? (
-                        <span style={{ fontSize:13 }}>💻</span>
-                      ) : (
-                        <div style={{ width:14, height:10, background:'rgba(30,41,59,0.8)', borderRadius:1 }} />
+                {/* ── Cabecera de empresa ── */}
+                <div className="flex items-start justify-between px-3 py-2 relative z-10"
+                  style={{ background: zone.color.header, minHeight: 58 }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                      🏢 <span className="truncate">{zone.empresaNombre}</span>
+                    </p>
+                    <div className="flex flex-wrap gap-0.5 mt-0.5">
+                      {zone.proyectoNombres.slice(0, 2).map(p => (
+                        <span key={p} className="text-[7px] px-1.5 py-0.5 rounded-full text-white/80 truncate max-w-[90px]"
+                          style={{ background:'rgba(255,255,255,0.18)', border:'1px solid rgba(255,255,255,0.22)' }}>
+                          {p}
+                        </span>
+                      ))}
+                      {zone.proyectoNombres.length > 2 && (
+                        <span className="text-[7px] text-white/50">+{zone.proyectoNombres.length - 2}</span>
                       )}
                     </div>
-                    {/* Teclado */}
-                    <div style={{ width:38, height:5, background: activo ? `${cfg.color}15` : 'rgba(20,30,55,0.8)', border:`1px solid ${activo ? `${cfg.color}30` : 'rgba(30,41,59,0.6)'}`, borderRadius:2 }} />
                   </div>
-                  {/* Frente del escritorio */}
-                  <div style={{
-                    width:72, height:8,
-                    background: activo ? `${cfg.color}10` : 'rgba(8,12,28,0.85)',
-                    borderRadius:'0 0 4px 4px',
-                    borderLeft:`1px solid ${activo ? `${cfg.color}30` : 'rgba(30,41,59,0.5)'}`,
-                    borderRight:`1px solid ${activo ? `${cfg.color}30` : 'rgba(30,41,59,0.5)'}`,
-                    borderBottom:`1px solid ${activo ? `${cfg.color}30` : 'rgba(30,41,59,0.5)'}`,
-                    borderTop:'none',
-                  }} />
-                  {/* Label */}
-                  <p style={{ textAlign:'center', fontSize:6, fontWeight:600, marginTop:2, color: activo ? cfg.color : '#334155' }}>
-                    {cfg.nombre}
-                  </p>
-                  {activo && <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-pulse" style={{ background:cfg.color }} />}
+                  {/* Badge: agentes activos */}
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ background:'rgba(255,255,255,0.2)', color:'rgba(255,255,255,0.95)' }}>
+                      {zone.agents.length} 👤
+                    </span>
+                    {zone.ghostAgents.length > 0 && (
+                      <span className="text-[7px] px-1.5 py-0.5 rounded-full"
+                        style={{ background:'rgba(255,255,255,0.12)', color:'rgba(255,255,255,0.7)' }}>
+                        {zone.ghostAgents.length} ⏳
+                      </span>
+                    )}
+                  </div>
                 </div>
-              );
-            })}
 
-            {/* Mesa de reuniones */}
-            {enSala.filter(id => getEstado(id) === 'hablando').length >= 2 && (
-              <div className="absolute" style={{
-                left:'50%', top:'50%', transform:'translate(-50%,-50%)',
-                width:84, height:46, borderRadius:23,
-                background:'rgba(99,102,241,0.06)',
-                border:'1px solid rgba(99,102,241,0.18)', zIndex:5,
+                {/* Suelo con patrón de tiles */}
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  top: 58,
+                  backgroundImage: `linear-gradient(${zone.color.border}12 1px,transparent 1px),linear-gradient(90deg,${zone.color.border}12 1px,transparent 1px)`,
+                  backgroundSize: '26px 26px',
+                }} />
+
+                {/* ── Fantasmas (agentes en cola) ── */}
+                {zone.ghostAgents.map((agenteId, gi) => {
+                  const slotIdx = zone.agents.length + gi;
+                  const slot = ZONE_DESK_SLOTS[slotIdx % ZONE_DESK_SLOTS.length];
+                  if (!slot) return null;
+                  const cfg = PERSONAJES[agenteId];
+                  if (!cfg) return null;
+                  const primaryZone = companyZones.find(z => z.agents.includes(agenteId));
+                  const topPct = slot.y;
+                  return (
+                    <div key={`ghost-${agenteId}`} className="absolute" style={{
+                      left: `${slot.x}%`,
+                      top: `calc(58px + ${topPct}% + 12px)`,
+                      transform: 'translate(-50%, -100%)',
+                      zIndex: 8,
+                    }}>
+                      {/* Escritorio fantasma */}
+                      <div style={{
+                        width: 72, height: 38,
+                        background: `${zone.color.border}0a`,
+                        border: `1.5px dashed ${zone.color.border}55`,
+                        borderRadius: 6,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        marginBottom: 2,
+                        boxShadow: `0 2px 8px ${zone.color.border}10`,
+                      }}>
+                        <span style={{ fontSize: 13, opacity: 0.4 }}>💻</span>
+                      </div>
+                      <GhostAgentSlot agenteId={agenteId} primaryNombre={primaryZone?.empresaNombre ?? '...'} estilo={estiloAvatares} />
+                    </div>
+                  );
+                })}
+
+                {/* ── Agentes primarios (escritorio + avatar) ── */}
+                {zone.agents.map((agenteId, ai) => {
+                  const slot = ZONE_DESK_SLOTS[ai % ZONE_DESK_SLOTS.length];
+                  if (!slot) return null;
+                  const cfg = PERSONAJES[agenteId];
+                  if (!cfg) return null;
+                  const estado  = getEstado(agenteId);
+                  const activo  = atDesk(estado);
+                  const secondaryZones = companyZones.filter(z => z.ghostAgents.includes(agenteId));
+                  const topPct = slot.y;
+
+                  return (
+                    <div key={agenteId}>
+                      {/* Escritorio */}
+                      <div className="absolute cursor-pointer"
+                        onClick={() => setSelId(selId === agenteId ? null : agenteId)}
+                        style={{
+                          left: `${slot.x}%`,
+                          top: `calc(58px + ${topPct + 5}%)`,
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 8,
+                        }}>
+                        <div style={{
+                          width: 72, height: 38,
+                          background: activo ? `${cfg.color}18` : 'white',
+                          border: `1.5px solid ${activo ? cfg.color+'60' : '#e2e8f0'}`,
+                          borderRadius: 6,
+                          boxShadow: activo
+                            ? `0 0 18px ${cfg.color}28, 0 3px 0 rgba(0,0,0,0.06)`
+                            : '0 2px 0 rgba(0,0,0,0.05)',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                        }}>
+                          <div style={{
+                            width: 42, height: 26,
+                            background: activo ? `${cfg.color}22` : '#f8fafc',
+                            border: `1px solid ${activo ? cfg.color+'50' : '#e2e8f0'}`,
+                            borderRadius: 3,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {activo ? <span style={{ fontSize: 13 }}>💻</span> : <div style={{ width: 14, height: 10, background: '#e2e8f0', borderRadius: 1 }} />}
+                          </div>
+                          <div style={{ width: 38, height: 5, background: activo ? `${cfg.color}15` : '#f1f5f9', border: `1px solid ${activo ? cfg.color+'25' : '#e2e8f0'}`, borderRadius: 2 }} />
+                        </div>
+                        <div style={{ width: 72, height: 7, background: activo ? `${cfg.color}10` : '#f8fafc', borderRadius: '0 0 4px 4px', border: `1px solid ${activo ? cfg.color+'20' : '#e2e8f0'}`, borderTop: 'none' }} />
+                        <p style={{ textAlign: 'center', fontSize: 6, fontWeight: 600, marginTop: 1, color: activo ? cfg.color : '#94a3b8' }}>{cfg.nombre}</p>
+                        {activo && <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-pulse border-2 border-white" style={{ background: cfg.color }} />}
+                      </div>
+
+                      {/* Avatar */}
+                      <div className="absolute transition-all duration-1000"
+                        draggable
+                        onDragStart={e => { e.dataTransfer.setData('text/plain', agenteId); e.dataTransfer.effectAllowed = 'move'; dragIdRef.current = agenteId; setDragId(agenteId); }}
+                        onDragEnd={() => { dragIdRef.current = null; setDragId(null); }}
+                        style={{
+                          left: `${slot.x}%`,
+                          top: `calc(58px + ${topPct - 1}%)`,
+                          transform: 'translate(-50%, -100%)',
+                          zIndex: 20,
+                          opacity: dragId === agenteId ? 0.45 : 1,
+                          cursor: 'grab',
+                        }}>
+                        {/* Badge multi-empresa */}
+                        {secondaryZones.length > 0 && (
+                          <div className="absolute z-30 sims-badge-bounce" style={{ top: -4, right: -4 }}>
+                            <div className="text-[7px] font-bold w-5 h-5 rounded-full flex items-center justify-center"
+                              style={{ background: '#f59e0b', color: '#fff', boxShadow: '0 1px 4px rgba(245,158,11,0.5)', border: '1.5px solid #fff' }}>
+                              +{secondaryZones.length}
+                            </div>
+                          </div>
+                        )}
+                        <AgenteCard id={agenteId} cfg={cfg} estado={estado} selected={selId === agenteId} onClick={() => setSelId(selId === agenteId ? null : agenteId)} estilo={estiloAvatares} />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Papeles voladores dirigidos a esta zona */}
+                {papeles.filter(p => zone.agents.includes(p.para)).map(p => {
+                  const cfg = PERSONAJES[p.para];
+                  if (!cfg) return null;
+                  const ai = zone.agents.indexOf(p.para);
+                  const slot = ZONE_DESK_SLOTS[ai % ZONE_DESK_SLOTS.length];
+                  if (!slot) return null;
+                  return (
+                    <div key={p.id} className="absolute pointer-events-none sims-papel-vuela z-30 text-xl"
+                      style={{ left:`${slot.x}%`, top:`calc(58px + ${slot.y + 8}%)` }}>
+                      📄
+                    </div>
+                  );
+                })}
+
+                {/* Drag-over indicator */}
+                {dragOver === `co-${zone.empresaId}` && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
+                    <span style={{ fontSize: 28, opacity: 0.4 }}>💼</span>
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            /* Estado vacío: sin empresas activas */
+            <div
+              className="relative flex-1 flex flex-col items-center justify-center transition-all"
+              onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+              onDragEnter={e => { e.preventDefault(); dragEnterZone('sala'); }}
+              onDragLeave={() => dragLeaveZone('sala')}
+              onDrop={dropToWork}
+              style={{
+                background: dragOver === 'sala' ? '#eff6ff' : '#f8fafc',
+                borderLeft: '1px solid #e2e8f0',
+                outline: dragOver === 'sala' ? '2px dashed #93c5fd' : 'none',
               }}>
-                <p style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', fontSize:8, color:'rgba(99,102,241,0.35)' }}>mesa</p>
-              </div>
-            )}
-
-            {dragOver === 'sala' && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
-                <span style={{ fontSize:28, opacity:0.5 }}>💼</span>
-              </div>
-            )}
-
-            {/* Avatares en sala */}
-            {enSala.map(id => {
-              const cfg    = PERSONAJES[id];
-              if (!cfg) return null;
-              const deskIdx = cfg.deskRow * 4 + cfg.deskCol;
-              const pos     = DESK_POS[deskIdx] ?? { x:50, y:50 };
-              return (
-                <div key={`av-${id}`} className="absolute transition-all duration-1000"
-                  draggable
-                  onDragStart={e => { e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed = 'move'; dragIdRef.current = id; setDragId(id); }}
-                  onDragEnd={() => { dragIdRef.current = null; setDragId(null); }}
-                  style={{ left:`${pos.x}%`, top:`${pos.y + 3}%`, transform:'translate(-50%, -100%)', zIndex:20, opacity: dragId === id ? 0.45 : 1, cursor:'grab' }}>
-                  <AgenteCard id={id} cfg={cfg} estado={getEstado(id)} selected={selId===id} onClick={() => setSelId(selId===id ? null : id)} />
+              {/* Cuadrícula de suelo */}
+              <div className="absolute inset-0 pointer-events-none" style={{
+                backgroundImage: 'linear-gradient(rgba(148,163,184,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,0.08) 1px,transparent 1px)',
+                backgroundSize: '26px 26px',
+              }} />
+              {enSalaGeneral.length === 0 ? (
+                <div className="text-center relative z-10">
+                  <div style={{ fontSize: 44, marginBottom: 12 }}>🏗️</div>
+                  <p className="text-sm font-semibold text-slate-400">Sala de trabajo vacía</p>
+                  <p className="text-xs text-slate-300 mt-1 max-w-[200px]">Los agentes aparecerán aquí cuando tengan tareas con empresa asignada</p>
                 </div>
-              );
-            })}
-
-            {/* Papeles voladores */}
-            {papeles.map(p => {
-              const cfgPara = PERSONAJES[p.para];
-              if (!cfgPara) return null;
-              const desIdx = cfgPara.deskRow * 4 + cfgPara.deskCol;
-              const dest   = DESK_POS[desIdx] ?? { x:50, y:50 };
-              return (
-                <div key={p.id} className="absolute pointer-events-none sims-papel-vuela z-30 text-xl"
-                  style={{ left:`${dest.x}%`, top:`${dest.y + 8}%` }}>
-                  📄
-                </div>
-              );
-            })}
-          </div>
+              ) : (
+                <>
+                  {enSalaGeneral.map(id => {
+                    const cfg = PERSONAJES[id];
+                    if (!cfg) return null;
+                    const deskIdx = cfg.deskRow * 4 + cfg.deskCol;
+                    const pos = DESK_POS[deskIdx] ?? { x:50, y:50 };
+                    return (
+                      <div key={id} className="absolute transition-all duration-1000"
+                        draggable
+                        onDragStart={e => { e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed = 'move'; dragIdRef.current = id; setDragId(id); }}
+                        onDragEnd={() => { dragIdRef.current = null; setDragId(null); }}
+                        style={{ left:`${pos.x}%`, top:`${pos.y + 5}%`, transform:'translate(-50%,-100%)', zIndex:20, opacity: dragId===id ? 0.45:1, cursor:'grab' }}>
+                        <AgenteCard id={id} cfg={cfg} estado={getEstado(id)} selected={selId===id} onClick={() => setSelId(selId===id ? null : id)} estilo={estiloAvatares} />
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Panel agente seleccionado ── */}
       {selCfg && (
         <div className="rounded-2xl overflow-hidden border" style={{ background:'#0f172a', borderColor:`${selCfg.color}33` }}>
-          {/* Cabecera */}
           <div className="px-6 py-4 flex items-center gap-4" style={{ borderBottom:`1px solid ${selCfg.color}1a` }}>
             <div className="w-16 h-20 rounded-2xl flex items-end justify-center overflow-visible" style={{ background:`${selCfg.color}14`, border:`1px solid ${selCfg.color}30` }}>
-              <HumanFigure cfg={selCfg} estado={getEstado(selId!)} />
+              {estiloAvatares === 'humanos' || !AVATAR_EMOJIS[selId!]
+                ? <HumanFigure cfg={selCfg} estado={getEstado(selId!)} />
+                : <div style={{ fontSize: 42, lineHeight: 1, paddingBottom: 8 }}>
+                    {estiloAvatares === 'animales' ? AVATAR_EMOJIS[selId!]?.animal : AVATAR_EMOJIS[selId!]?.mixto}
+                  </div>
+              }
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -1091,7 +1266,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
             </div>
           </div>
 
-          {/* Botones de control del avatar */}
+          {/* Botones de control */}
           <div className="px-6 pt-4 pb-1 flex gap-2">
             {atDesk(getEstado(selId!)) && (
               <button
@@ -1113,9 +1288,8 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
             )}
           </div>
 
-          {/* Tareas con plan checklist */}
+          {/* Tareas */}
           <div className="px-6 py-4">
-            {/* Cabecera + filtros */}
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color:`${selCfg.color}80` }}>
                 Tareas asignadas
@@ -1131,7 +1305,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
 
             {selTareas.length > 2 && (
               <div className="flex flex-wrap gap-1.5 mb-3">
-                {/* Chips de estado */}
                 {(['pendiente','en_progreso','completada'] as const).map(e => (
                   <button key={e} onClick={() => setFiltroEstado(filtroEstado === e ? '' : e)}
                     className="text-[9px] font-semibold px-2 py-0.5 rounded-full transition-colors"
@@ -1143,7 +1316,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                     {e.replace('_',' ')}
                   </button>
                 ))}
-                {/* Empresa */}
                 {empresasAgente.length > 1 && (
                   <select value={filtroEmpresaId}
                     onChange={e => { setFiltroEmpresaId(e.target.value); setFiltroProyectoId(''); }}
@@ -1152,7 +1324,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                     {empresasAgente.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                   </select>
                 )}
-                {/* Proyecto */}
                 {proyectosAgente.length > 1 && (
                   <select value={filtroProyectoId} onChange={e => setFiltroProyectoId(e.target.value)}
                     className="text-[9px] bg-transparent border border-white/10 rounded px-1.5 py-0.5 text-slate-400 cursor-pointer">
@@ -1174,8 +1345,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                   const logCount   = bitacora.filter(b => b.tarea_id === t.id).length;
                   const total      = steps.length || logCount;
                   const finalizando = t.estado === 'en_progreso' && total > 0 && logCount >= total;
-                  const doneCount  = t.estado === 'completada' ? total
-                                   : Math.min(logCount, finalizando ? total - 1 : total);
+                  const doneCount  = t.estado === 'completada' ? total : Math.min(logCount, finalizando ? total - 1 : total);
                   const remaining  = total - doneCount;
                   const isExpanded = expandedTareaId === t.id;
                   return (
@@ -1186,7 +1356,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                         background: isExpanded ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
                         border: isExpanded ? `1px solid ${selCfg.color}30` : '1px solid rgba(255,255,255,0.05)',
                       }}>
-                      {/* Fila resumen */}
                       <div className="flex items-start gap-3 p-3">
                         <span className="mt-1.5 w-2 h-2 rounded-full shrink-0 flex-none" style={{
                           background: t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? '#3b82f6' : (t.notas && /^error/i.test(t.notas) ? '#ef4444' : '#eab308'),
@@ -1208,14 +1377,10 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                 <span style={{ color:'#22c55e' }}>✓ {doneCount}</span>
                                 {finalizando
                                   ? <span style={{ color:'#60a5fa' }}> · ⏳ verificando último paso</span>
-                                  : <>
-                                      <span className="text-slate-600"> · ⬜ {remaining}</span>
-                                      <span className="text-slate-700"> · {total} {steps.length > 0 ? 'pasos' : 'acciones'}</span>
-                                    </>
+                                  : <><span className="text-slate-600"> · ⬜ {remaining}</span><span className="text-slate-700"> · {total} {steps.length > 0 ? 'pasos' : 'acciones'}</span></>
                                 }
                               </span>
                             )}
-                            {/* Indicador de paso actual */}
                             {t.estado === 'en_progreso' && total > 0 && !finalizando && (
                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                                 style={{ background:`${selCfg.color}25`, color:selCfg.accent }}>
@@ -1229,7 +1394,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               </span>
                             )}
                           </div>
-                          {/* Último comando SSH ejecutado */}
                           {t.estado === 'en_progreso' && (() => {
                             const cmds = extraerComandosSSH(bitacora, t.id).filter(b => b.accion.startsWith('🖥️'));
                             const ultimo = cmds[cmds.length - 1];
@@ -1267,10 +1431,8 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                         </div>
                       </div>
 
-                      {/* Checklist expandida */}
                       {isExpanded && (
                         <div className="px-3 pb-3">
-                          {/* Cambio manual de estado (bypass) */}
                           <div className="flex items-center gap-1.5 mb-3 flex-wrap" onClick={e => e.stopPropagation()}>
                             <span className="text-[9px] text-slate-600 font-semibold uppercase tracking-wider">Mover a:</span>
                             {([
@@ -1287,17 +1449,11 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                   setCambioEstadoId(null);
                                 }}
                                 className="text-[9px] font-semibold px-2 py-0.5 rounded-md transition-opacity"
-                                style={{
-                                  background: `${s.color}18`,
-                                  color: s.color,
-                                  border: `1px solid ${s.color}35`,
-                                  opacity: cambioEstadoId === t.id ? 0.4 : 1,
-                                }}>
+                                style={{ background:`${s.color}18`, color:s.color, border:`1px solid ${s.color}35`, opacity: cambioEstadoId === t.id ? 0.4 : 1 }}>
                                 {cambioEstadoId === t.id ? '…' : s.label}
                               </button>
                             ))}
                           </div>
-
                           {t.notas && (
                             <p className="text-[10px] text-slate-400 mb-2 leading-snug italic border-l-2 pl-2" style={{ borderColor:`${selCfg.color}40` }}>
                               {t.notas}
@@ -1329,7 +1485,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               })}
                             </div>
                           )}
-                          {/* Bitácora de comandos SSH — todos en orden cronológico */}
                           {(() => {
                             const sshLogs = extraerComandosSSH(bitacora, t.id);
                             if (sshLogs.length === 0) return null;
@@ -1345,12 +1500,8 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                       ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
                                       : b.accion.replace(/^📤\s*SSH resultado \(exit \d+\):\s*/, '');
                                     return (
-                                      <div key={i} className="rounded px-2 py-1" style={{
-                                        background: isCmd ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.2)',
-                                      }}>
-                                        <p className="text-[8px] font-mono break-all leading-relaxed" style={{
-                                          color: isCmd ? '#4ade80' : '#475569',
-                                        }}>
+                                      <div key={i} className="rounded px-2 py-1" style={{ background: isCmd ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.2)' }}>
+                                        <p className="text-[8px] font-mono break-all leading-relaxed" style={{ color: isCmd ? '#4ade80' : '#475569' }}>
                                           {isCmd ? '$ ' : '  '}{txt.slice(0, 200)}{txt.length > 200 ? '…' : ''}
                                         </p>
                                       </div>
@@ -1360,27 +1511,16 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               </div>
                             );
                           })()}
-                          {/* Vista sin plan: mostrar bitácora completa formateada */}
                           {steps.length === 0 && bitacora.filter(b => b.tarea_id === t.id).length > 0 && (
                             <div className="space-y-1">
-                              <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color:`${selCfg.color}60` }}>
-                                Comandos ejecutados
-                              </p>
+                              <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color:`${selCfg.color}60` }}>Comandos ejecutados</p>
                               {bitacora.filter(b => b.tarea_id === t.id).slice().reverse().slice(0, 20).map((b, i) => {
                                 const isCmd    = b.accion.startsWith('🖥️');
                                 const isResult = b.accion.startsWith('📤');
-                                const txt = isCmd
-                                  ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
-                                  : isResult
-                                    ? b.accion.replace(/^📤\s*SSH resultado \(exit \d+\):\s*/, '')
-                                    : b.accion;
+                                const txt = isCmd ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '') : isResult ? b.accion.replace(/^📤\s*SSH resultado \(exit \d+\):\s*/, '') : b.accion;
                                 return (
-                                  <div key={i} className="rounded-lg px-2 py-1.5" style={{
-                                    background: isCmd ? 'rgba(0,0,0,0.5)' : isResult ? 'rgba(0,0,0,0.25)' : 'transparent',
-                                  }}>
-                                    <p className="text-[8px] font-mono break-all leading-relaxed" style={{
-                                      color: isCmd ? '#4ade80' : isResult ? '#64748b' : '#94a3b8',
-                                    }}>
+                                  <div key={i} className="rounded-lg px-2 py-1.5" style={{ background: isCmd ? 'rgba(0,0,0,0.5)' : isResult ? 'rgba(0,0,0,0.25)' : 'transparent' }}>
+                                    <p className="text-[8px] font-mono break-all leading-relaxed" style={{ color: isCmd ? '#4ade80' : isResult ? '#64748b' : '#94a3b8' }}>
                                       {isCmd ? '$ ' : isResult ? '  ' : ''}{txt.slice(0, 200)}{txt.length > 200 ? '…' : ''}
                                     </p>
                                   </div>
@@ -1388,7 +1528,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               })}
                             </div>
                           )}
-                          {steps.length === 0 && logCount === 0 && !t.notas && (
+                          {steps.length === 0 && bitacora.filter(b => b.tarea_id === t.id).length === 0 && !t.notas && (
                             <p className="text-[10px] text-slate-600 italic">Sin detalles adicionales.</p>
                           )}
                         </div>
@@ -1396,7 +1536,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                     </div>
                   );
                 })}
-                {/* Ver más */}
                 {hayMasTareas && (
                   <button onClick={() => setTareaPage(p => p + 5)}
                     className="w-full text-[10px] text-slate-500 hover:text-slate-300 py-2 rounded-xl transition-colors border border-white/5 mt-1">
@@ -1425,7 +1564,6 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
             const cfg = PERSONAJES[b.agente];
             return (
               <div key={b.id} className="px-4 py-3 flex items-start gap-3">
-                {/* Badge: emoji del rol en círculo de color — sin clipping */}
                 <div className="w-9 h-9 rounded-xl flex-none flex items-center justify-center shrink-0"
                   style={{ background: cfg ? `${cfg.color}18` : 'rgba(255,255,255,0.05)', border:`1px solid ${cfg ? `${cfg.color}33` : 'transparent'}` }}>
                   <span style={{ fontSize: 16 }}>{cfg ? cfg.roleEmoji : '🤖'}</span>

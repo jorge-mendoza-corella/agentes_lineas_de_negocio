@@ -644,6 +644,13 @@ ${resumptionSection}
 La herramienta YA establece la conexión con llave privada automáticamente. El parámetro \`comando\` es lo que se ejecuta DENTRO del servidor (ej: \`docker ps\`, \`sudo apt install -y docker.io\`).
 Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa directamente al primer comando real.`;
 
+  function esErrorDeRed(e: unknown): boolean {
+    const msg = e instanceof Error ? e.message : String(e);
+    return msg.includes('fetch failed') || msg.includes('ECONNRESET') ||
+           msg.includes('ETIMEDOUT') || msg.includes('ENOTFOUND') ||
+           msg.includes('network') || msg.includes('socket');
+  }
+
   try {
     if (tieneAnthropic) {
       try {
@@ -651,7 +658,7 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
         return;
       } catch (claudeErr: unknown) {
         const msg = claudeErr instanceof Error ? claudeErr.message : String(claudeErr);
-        // Fallback solo si es error de créditos/autenticación y tenemos Gemini
+        // Fallback si es error de créditos/autenticación y tenemos Gemini
         const esCreditError = msg.includes('credit') || msg.includes('401') || msg.includes('403');
         if (!esCreditError || !tieneGemini) throw claudeErr;
 
@@ -662,8 +669,24 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
         });
       }
     }
-    // Gemini (fallback o primario)
-    await loopGemini(systemPrompt, tareaId, agente, db);
+
+    // Gemini con retry automático para errores de red transitorios
+    const MAX_REINTENTOS = 3;
+    for (let intento = 0; intento < MAX_REINTENTOS; intento++) {
+      try {
+        await loopGemini(systemPrompt, tareaId, agente, db);
+        return;
+      } catch (geminiErr: unknown) {
+        if (!esErrorDeRed(geminiErr) || intento === MAX_REINTENTOS - 1) throw geminiErr;
+        const delaySeg = (intento + 1) * 5;
+        await db.from('bitacora_actividad').insert({
+          agente,
+          accion: `⚠️ Gemini error de red (intento ${intento + 1}/${MAX_REINTENTOS}), reintentando en ${delaySeg}s…`,
+          tarea_id: tareaId,
+        });
+        await new Promise(r => setTimeout(r, delaySeg * 1000));
+      }
+    }
 
   } catch (e) {
     console.error(`[especialista:${agente}] error:`, e);
@@ -673,7 +696,16 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
       accion: `❌ Error en ejecución: ${msg}`,
       tarea_id: tareaId,
     });
-    await db.from('tareas').update({ notas: `Error: ${msg}` }).eq('id', tareaId);
+    // Si es un error transitorio, regresar a pendiente para que el usuario pueda reanudar
+    if (esErrorDeRed(e) || msg.includes('credit') || msg.includes('overloaded')) {
+      await db.from('tareas').update({
+        estado: 'pendiente',
+        iniciado_en: null,
+        notas: `Error transitorio (${new Date().toLocaleTimeString('es-MX')}): ${msg.slice(0, 200)}. Puedes reanudar la tarea.`,
+      }).eq('id', tareaId);
+    } else {
+      await db.from('tareas').update({ notas: `Error: ${msg}` }).eq('id', tareaId);
+    }
     await db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', agente);
   }
 }

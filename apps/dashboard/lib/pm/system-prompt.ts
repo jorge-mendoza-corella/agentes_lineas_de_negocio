@@ -137,7 +137,13 @@ export function buildSystemPrompt(
 - NO preguntes por la empresa ni el proyecto — ya están seleccionados. Úsalos directamente.`
     : '';
 
-  return `${PM_GLOBAL_BASE}
+  const vpsHost = process.env.VPS_HOST ?? '';
+  const vpsUser = process.env.VPS_USER ?? '';
+  const vpsInfo = vpsHost
+    ? `\n\n---\n\n## Infraestructura VPS\n- **Host:** \`${vpsHost}\`\n- **Usuario SSH:** \`${vpsUser}\`\n- Las credenciales SSH (llave privada, passphrase, sudo password) están configuradas en variables de entorno del sistema — los agentes las leen automáticamente.\n- **NUNCA pidas al usuario credenciales SSH.** Si una tarea requiere conexión SSH, incluye \`host: "${vpsHost}"\` y \`usuario: "${vpsUser}"\` en el plan y el agente se conectará sin pedir nada más.`
+    : '';
+
+  return `${PM_GLOBAL_BASE}${vpsInfo}
 
 ---
 

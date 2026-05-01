@@ -1137,19 +1137,24 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                           })()}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          {(t.estado === 'pendiente') && (
+                          {(t.estado === 'pendiente' || t.estado === 'cancelada' || t.estado === 'en_progreso') && (
                             <button
                               disabled={ejecutandoId === t.id}
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 setEjecutandoId(t.id);
-                                await ejecutarTareaAPI(t.id, false);
+                                await ejecutarTareaAPI(t.id, t.estado === 'en_progreso');
                                 setTimeout(() => setEjecutandoId(null), 3000);
                               }}
                               className="text-[10px] font-bold px-2 py-0.5 rounded-md transition-opacity"
-                              style={{ background:'rgba(234,179,8,0.15)', color:'#eab308', border:'1px solid rgba(234,179,8,0.3)', opacity: ejecutandoId === t.id ? 0.5 : 1 }}
-                              title="Ejecutar tarea ahora">
-                              {ejecutandoId === t.id ? '⏳' : '▶'}
+                              style={{
+                                background: t.estado === 'en_progreso' ? 'rgba(59,130,246,0.15)' : 'rgba(234,179,8,0.15)',
+                                color:      t.estado === 'en_progreso' ? '#60a5fa' : '#eab308',
+                                border:     t.estado === 'en_progreso' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(234,179,8,0.3)',
+                                opacity: ejecutandoId === t.id ? 0.5 : 1,
+                              }}
+                              title={t.estado === 'en_progreso' ? 'Reiniciar tarea' : 'Ejecutar tarea ahora'}>
+                              {ejecutandoId === t.id ? '⏳' : t.estado === 'en_progreso' ? '⟳' : '▶'}
                             </button>
                           )}
                           <span className="text-slate-600 text-xs mt-0.5">{isExpanded ? '▲' : '▼'}</span>

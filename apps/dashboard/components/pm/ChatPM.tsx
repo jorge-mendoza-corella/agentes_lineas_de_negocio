@@ -21,6 +21,7 @@ interface MensajeUI {
   pendiente?: boolean;
   esAudio?: boolean;
   adjuntos?: Array<{ tipo: string; preview?: string; nombre: string }>;
+  created_at?: string;
 }
 
 interface ToolEvent {
@@ -187,8 +188,9 @@ export default function ChatPM({
   const [mensajes, setMensajes] = useState<MensajeUI[]>(
     mensajesIniciales.map(m => ({
       id: m.id,
-      rol: m.rol === 'usuario' ? 'usuario' : 'agente',
+      rol: m.rol === 'usuario' ? 'usuario' as const : 'agente' as const,
       contenido: m.contenido,
+      created_at: m.created_at,
     }))
   );
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
@@ -349,8 +351,8 @@ export default function ChatPM({
 
     setMensajes(prev => [
       ...prev,
-      { id: idUsuario, rol: 'usuario', contenido: '🎤 Transcribiendo...', esAudio: true },
-      { id: idAgente, rol: 'agente', contenido: '', pendiente: true },
+      { id: idUsuario, rol: 'usuario', contenido: '🎤 Transcribiendo...', esAudio: true, created_at: new Date().toISOString() },
+      { id: idAgente, rol: 'agente', contenido: '', pendiente: true, created_at: new Date().toISOString() },
     ]);
 
     try {
@@ -462,8 +464,8 @@ export default function ChatPM({
 
     setMensajes(prev => [
       ...prev,
-      { id: idUsuario, rol: 'usuario', contenido: texto, adjuntos: adjuntosActuales.map(a => ({ tipo: a.tipo, preview: a.preview, nombre: a.nombre })) },
-      { id: idAgente, rol: 'agente', contenido: '', pendiente: true },
+      { id: idUsuario, rol: 'usuario', contenido: texto, adjuntos: adjuntosActuales.map(a => ({ tipo: a.tipo, preview: a.preview, nombre: a.nombre })), created_at: new Date().toISOString() },
+      { id: idAgente, rol: 'agente', contenido: '', pendiente: true, created_at: new Date().toISOString() },
     ]);
 
     try {
@@ -726,6 +728,13 @@ export default function ChatPM({
                   <span className="inline-block w-2 h-4 bg-gray-400 ml-0.5 animate-pulse rounded-sm align-text-bottom" />
                 )}
               </div>
+
+              {/* Timestamp */}
+              {m.created_at && (
+                <span className={`text-[10px] text-gray-400 px-1 ${m.rol === 'usuario' ? 'self-end' : 'self-start'}`}>
+                  {new Date(m.created_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
 
               {/* Botón TTS en mensajes del agente ya completos */}
               {m.rol === 'agente' && !m.pendiente && m.contenido && (

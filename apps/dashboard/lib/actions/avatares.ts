@@ -125,7 +125,7 @@ async function verificarTareasEquipo(pmNombre: string, db: any): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const t of (tareasAbiertas as any[])) {
     if (!porAgente[t.agente_asignado]) porAgente[t.agente_asignado] = [];
-    porAgente[t.agente_asignado].push(t);
+    porAgente[t.agente_asignado]!.push(t);
   }
 
   const agentesConTareas = Object.keys(porAgente).filter(ag => ag !== pmNombre);
@@ -146,7 +146,7 @@ async function verificarTareasEquipo(pmNombre: string, db: any): Promise<void> {
 
   // Log resumen general
   const resumen = agentesConTareas.map(ag => {
-    const ts = porAgente[ag];
+    const ts = porAgente[ag] ?? [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const enProg = ts.filter((t: any) => t.estado === 'en_progreso').length;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,7 +166,9 @@ async function verificarTareasEquipo(pmNombre: string, db: any): Promise<void> {
   for (const agente of agentesConTareas) {
     const estado = estadosAv[agente] ?? 'idle';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tareaEnProg = porAgente[agente].find((t: any) => t.estado === 'en_progreso');
+    const agTareas = porAgente[agente] ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tareaEnProg = agTareas.find((t: any) => t.estado === 'en_progreso');
 
     if (estado === 'idle' && tareaEnProg) {
       await db.from('bitacora_actividad').insert({
@@ -175,11 +177,11 @@ async function verificarTareasEquipo(pmNombre: string, db: any): Promise<void> {
         tarea_id: tareaEnProg.id,
       });
       _reanudarAgente(agente, db).catch(console.error);
-    } else if (estado === 'idle' && porAgente[agente].length > 0) {
-      const t = porAgente[agente][0];
+    } else if (estado === 'idle' && agTareas.length > 0) {
+      const t = agTareas[0];
       await db.from('bitacora_actividad').insert({
         agente: pmNombre,
-        accion: `📋 → ${agente}: Tienes ${porAgente[agente].length} tarea(s) pendiente(s). Próxima: "${(t.descripcion as string).slice(0, 80)}"`,
+        accion: `📋 → ${agente}: Tienes ${agTareas.length} tarea(s) pendiente(s). Próxima: "${(t.descripcion as string).slice(0, 80)}"`,
         tarea_id: t.id,
       });
     }

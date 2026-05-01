@@ -611,7 +611,7 @@ function parsePlanSteps(plan: string): string[] {
   const headers: string[] = [];
   let m;
   while ((m = pasoHeaderRe.exec(plan)) !== null) {
-    headers.push(`Paso ${m[1]}: ${m[2].trim()}`);
+    headers.push(`Paso ${m[1]}: ${(m[2] ?? '').trim()}`);
   }
   if (headers.length > 0) return headers;
 

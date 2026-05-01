@@ -1494,52 +1494,90 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                             const newestIsPending = allSSH[0]?.accion.startsWith('🖥️') ?? false;
                             return (
                               <div className="mt-3">
-                                <div className="flex items-center gap-2 mb-1.5">
-                                  <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color:`${selCfg.color}55` }}>
-                                    Comandos SSH
-                                  </p>
-                                  <span className="text-[8px] px-1.5 py-0.5 rounded-full" style={{ background:'rgba(255,255,255,0.05)', color:'#475569' }}>
-                                    {total}
-                                  </span>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <span style={{ fontSize:9, fontWeight:800, letterSpacing:'0.1em', textTransform:'uppercase', color:`${selCfg.color}88` }}>Comandos SSH</span>
+                                    <span style={{ fontSize:9, fontWeight:700, background:'rgba(255,255,255,0.06)', color:'#64748b', padding:'1px 6px', borderRadius:99 }}>{total}</span>
+                                  </div>
                                   {newestIsPending && (
-                                    <span className="ml-auto text-[8px] font-bold text-blue-400 animate-pulse">
-                                      ⏳ esperando respuesta
-                                    </span>
+                                    <div className="ml-auto flex items-center gap-1.5">
+                                      <span style={{ width:6, height:6, borderRadius:'50%', background:'#3b82f6', display:'inline-block' }} className="animate-ping" />
+                                      <span style={{ fontSize:9, fontWeight:700, color:'#60a5fa' }}>AGUARDANDO RESPUESTA</span>
+                                    </div>
                                   )}
                                 </div>
-                                <div className="space-y-0.5 max-h-56 overflow-y-auto">
+                                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
                                   {allSSH.map((b, i) => {
                                     const isCmd     = b.accion.startsWith('🖥️');
                                     const isPending = i === 0 && newestIsPending;
+                                    const isNewest  = i === 0;
                                     const num       = total - i;
                                     const txt       = isCmd
                                       ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
                                       : b.accion.replace(/^📤\s*SSH resultado \(exit [^)]+\):\s*/, '');
-                                    const ts = new Date(b.creado_en).toLocaleString('es-MX', {
-                                      month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit',
-                                    });
+                                    const d = new Date(b.creado_en);
+                                    const tsHora = d.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+                                    const tsFecha = d.toLocaleDateString('es-MX', { day:'numeric', month:'short' });
                                     const exitMatch = !isCmd ? b.accion.match(/exit (\d+)/) : null;
                                     const exitCode  = exitMatch ? exitMatch[1] : null;
                                     const isError   = exitCode != null && exitCode !== '0';
-                                    return (
-                                      <div key={b.id} className="rounded-lg px-2 py-1.5" style={{
-                                        background: isPending ? 'rgba(59,130,246,0.1)' : isError ? 'rgba(239,68,68,0.07)' : isCmd ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.22)',
-                                        border: isPending ? '1px solid rgba(59,130,246,0.3)' : isError ? '1px solid rgba(239,68,68,0.2)' : '1px solid transparent',
+                                    const isOk      = exitCode === '0';
+
+                                    const card = (
+                                      <div key={b.id} style={{
+                                        borderRadius: 8,
+                                        background: isPending ? 'rgba(12,18,33,0.95)' : isError ? 'rgba(40,12,12,0.7)' : isCmd ? 'rgba(8,14,26,0.9)' : 'rgba(15,20,30,0.5)',
+                                        border: isPending ? 'none' : isError ? '1px solid rgba(239,68,68,0.25)' : isNewest && !isPending ? `1px solid ${selCfg.color}33` : '1px solid rgba(255,255,255,0.04)',
+                                        padding: '6px 10px 7px',
                                       }}>
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                          <span className="text-[7px] font-bold font-mono shrink-0" style={{ color:'#374151', opacity:0.65 }}>#{num}</span>
-                                          <span className="text-[7px] shrink-0 tabular-nums" style={{ color:'#374151' }}>{ts}</span>
-                                          {isPending && <span className="ml-auto text-[7px] font-bold text-blue-400 animate-pulse">⏳ aguardando…</span>}
-                                          {isError   && <span className="ml-auto text-[7px] font-bold text-red-400">✗ exit {exitCode}</span>}
-                                          {!isPending && !isError && exitCode === '0' && <span className="ml-auto text-[7px] font-semibold text-green-500 opacity-60">✓ ok</span>}
+                                        {/* Meta row */}
+                                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                                          {/* Número de orden */}
+                                          <span style={{
+                                            fontSize:9, fontWeight:800, fontFamily:'monospace',
+                                            background: isPending ? '#1d4ed8' : isError ? 'rgba(239,68,68,0.2)' : isOk ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)',
+                                            color: isPending ? '#93c5fd' : isError ? '#f87171' : isOk ? '#4ade80' : '#64748b',
+                                            padding:'1px 5px', borderRadius:4, flexShrink:0,
+                                          }}>#{num}</span>
+
+                                          {isNewest && !isPending && (
+                                            <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
+                                          )}
+
+                                          {/* Timestamp */}
+                                          <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
+                                            <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora}</span>
+                                            <span style={{ fontSize:8, color:'#475569' }}>{tsFecha}</span>
+                                          </div>
+
+                                          {/* Status badge */}
+                                          <div style={{ marginLeft:'auto', flexShrink:0 }}>
+                                            {isPending && (
+                                              <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa', letterSpacing:'0.05em' }}>⟳ ESPERANDO</span>
+                                            )}
+                                            {isError && (
+                                              <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode}</span>
+                                            )}
+                                            {!isPending && isOk && (
+                                              <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>
+                                            )}
+                                          </div>
                                         </div>
-                                        <p className="text-[8px] font-mono break-all leading-relaxed" style={{
-                                          color: isPending ? '#60a5fa' : isCmd ? '#4ade80' : isError ? '#f87171' : '#475569',
+
+                                        {/* Command text */}
+                                        <p style={{
+                                          fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0,
+                                          color: isPending ? '#93c5fd' : isCmd ? '#4ade80' : isError ? '#fca5a5' : '#64748b',
                                         }}>
-                                          {isCmd ? '$ ' : '  '}{txt.slice(0, 300)}{txt.length > 300 ? '…' : ''}
+                                          {isCmd && <span style={{ color: isPending ? '#60a5fa' : '#22d3ee', marginRight:4 }}>$</span>}
+                                          {txt.slice(0, 400)}{txt.length > 400 ? '…' : ''}
                                         </p>
                                       </div>
                                     );
+
+                                    return isPending
+                                      ? <div key={b.id} className="ssh-pending-wrap">{card}</div>
+                                      : card;
                                   })}
                                 </div>
                               </div>
@@ -1555,44 +1593,72 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               <div className="space-y-1">
                                 {allSSH2.length > 0 && (
                                   <>
-                                    <div className="flex items-center gap-2 mb-1.5">
-                                      <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color:`${selCfg.color}60` }}>Comandos SSH</p>
-                                      <span className="text-[8px] px-1.5 py-0.5 rounded-full" style={{ background:'rgba(255,255,255,0.05)', color:'#475569' }}>{total2}</span>
-                                      {newestIsPending2 && <span className="ml-auto text-[8px] font-bold text-blue-400 animate-pulse">⏳ esperando respuesta</span>}
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <span style={{ fontSize:9, fontWeight:800, letterSpacing:'0.1em', textTransform:'uppercase', color:`${selCfg.color}88` }}>Comandos SSH</span>
+                                        <span style={{ fontSize:9, fontWeight:700, background:'rgba(255,255,255,0.06)', color:'#64748b', padding:'1px 6px', borderRadius:99 }}>{total2}</span>
+                                      </div>
+                                      {newestIsPending2 && (
+                                        <div className="ml-auto flex items-center gap-1.5">
+                                          <span style={{ width:6, height:6, borderRadius:'50%', background:'#3b82f6', display:'inline-block' }} className="animate-ping" />
+                                          <span style={{ fontSize:9, fontWeight:700, color:'#60a5fa' }}>AGUARDANDO RESPUESTA</span>
+                                        </div>
+                                      )}
                                     </div>
-                                    <div className="space-y-0.5 max-h-56 overflow-y-auto">
+                                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
                                       {allSSH2.map((b, i) => {
                                         const isCmd2     = b.accion.startsWith('🖥️');
                                         const isPending2 = i === 0 && newestIsPending2;
+                                        const isNewest2  = i === 0;
                                         const num2       = total2 - i;
                                         const txt2       = isCmd2
                                           ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
                                           : b.accion.replace(/^📤\s*SSH resultado \(exit [^)]+\):\s*/, '');
-                                        const ts2 = new Date(b.creado_en).toLocaleString('es-MX', {
-                                          month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit',
-                                        });
+                                        const d2 = new Date(b.creado_en);
+                                        const tsHora2  = d2.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+                                        const tsFecha2 = d2.toLocaleDateString('es-MX', { day:'numeric', month:'short' });
                                         const exitMatch2 = !isCmd2 ? b.accion.match(/exit (\d+)/) : null;
                                         const exitCode2  = exitMatch2 ? exitMatch2[1] : null;
                                         const isError2   = exitCode2 != null && exitCode2 !== '0';
-                                        return (
-                                          <div key={b.id} className="rounded-lg px-2 py-1.5" style={{
-                                            background: isPending2 ? 'rgba(59,130,246,0.1)' : isError2 ? 'rgba(239,68,68,0.07)' : isCmd2 ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.22)',
-                                            border: isPending2 ? '1px solid rgba(59,130,246,0.3)' : isError2 ? '1px solid rgba(239,68,68,0.2)' : '1px solid transparent',
+                                        const isOk2      = exitCode2 === '0';
+
+                                        const card2 = (
+                                          <div key={b.id} style={{
+                                            borderRadius: 8,
+                                            background: isPending2 ? 'rgba(12,18,33,0.95)' : isError2 ? 'rgba(40,12,12,0.7)' : isCmd2 ? 'rgba(8,14,26,0.9)' : 'rgba(15,20,30,0.5)',
+                                            border: isPending2 ? 'none' : isError2 ? '1px solid rgba(239,68,68,0.25)' : isNewest2 && !isPending2 ? `1px solid ${selCfg.color}33` : '1px solid rgba(255,255,255,0.04)',
+                                            padding: '6px 10px 7px',
                                           }}>
-                                            <div className="flex items-center gap-2 mb-0.5">
-                                              <span className="text-[7px] font-bold font-mono shrink-0" style={{ color:'#374151', opacity:0.65 }}>#{num2}</span>
-                                              <span className="text-[7px] shrink-0 tabular-nums" style={{ color:'#374151' }}>{ts2}</span>
-                                              {isPending2  && <span className="ml-auto text-[7px] font-bold text-blue-400 animate-pulse">⏳ aguardando…</span>}
-                                              {isError2    && <span className="ml-auto text-[7px] font-bold text-red-400">✗ exit {exitCode2}</span>}
-                                              {!isPending2 && !isError2 && exitCode2 === '0' && <span className="ml-auto text-[7px] font-semibold text-green-500 opacity-60">✓ ok</span>}
+                                            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                                              <span style={{
+                                                fontSize:9, fontWeight:800, fontFamily:'monospace',
+                                                background: isPending2 ? '#1d4ed8' : isError2 ? 'rgba(239,68,68,0.2)' : isOk2 ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)',
+                                                color: isPending2 ? '#93c5fd' : isError2 ? '#f87171' : isOk2 ? '#4ade80' : '#64748b',
+                                                padding:'1px 5px', borderRadius:4, flexShrink:0,
+                                              }}>#{num2}</span>
+                                              {isNewest2 && !isPending2 && (
+                                                <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
+                                              )}
+                                              <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
+                                                <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora2}</span>
+                                                <span style={{ fontSize:8, color:'#475569' }}>{tsFecha2}</span>
+                                              </div>
+                                              <div style={{ marginLeft:'auto', flexShrink:0 }}>
+                                                {isPending2 && <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa' }}>⟳ ESPERANDO</span>}
+                                                {isError2   && <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode2}</span>}
+                                                {!isPending2 && isOk2 && <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>}
+                                              </div>
                                             </div>
-                                            <p className="text-[8px] font-mono break-all leading-relaxed" style={{
-                                              color: isPending2 ? '#60a5fa' : isCmd2 ? '#4ade80' : isError2 ? '#f87171' : '#475569',
-                                            }}>
-                                              {isCmd2 ? '$ ' : '  '}{txt2.slice(0, 300)}{txt2.length > 300 ? '…' : ''}
+                                            <p style={{ fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0, color: isPending2 ? '#93c5fd' : isCmd2 ? '#4ade80' : isError2 ? '#fca5a5' : '#64748b' }}>
+                                              {isCmd2 && <span style={{ color: isPending2 ? '#60a5fa' : '#22d3ee', marginRight:4 }}>$</span>}
+                                              {txt2.slice(0, 400)}{txt2.length > 400 ? '…' : ''}
                                             </p>
                                           </div>
                                         );
+
+                                        return isPending2
+                                          ? <div key={b.id} className="ssh-pending-wrap">{card2}</div>
+                                          : card2;
                                       })}
                                     </div>
                                   </>

@@ -140,3 +140,43 @@
   50%     { transform: rotate(5deg); }
 }
 .sims-tomando-cafe { animation: sims-coffee-kf 2.2s ease-in-out infinite; display:inline-block; }
+
+/* ── Agente fantasma (esperando otra empresa) ── */
+@keyframes sims-ghost-kf {
+  0%, 100% { opacity: 0.32; transform: scale(0.96) translateY(0); }
+  50%       { opacity: 0.48; transform: scale(1.02) translateY(-2px); }
+}
+.sims-ghost { animation: sims-ghost-kf 3.2s ease-in-out infinite; }
+
+/* ── Badge multi-empresa (rebote) ── */
+@keyframes sims-badge-bounce-kf {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.18); }
+}
+.sims-badge-bounce { animation: sims-badge-bounce-kf 1.4s ease-in-out infinite; }
+
+/* ── SSH pending — borde giratorio ── */
+@keyframes ssh-spin-kf { to { transform: rotate(360deg); } }
+
+.ssh-pending-wrap {
+  position: relative;
+  border-radius: 8px;
+  isolation: isolate;
+}
+.ssh-pending-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 10px;
+  background: conic-gradient(from 0deg, #3b82f6 0deg, #60a5fa 60deg, transparent 120deg, transparent 240deg, #818cf8 300deg, #3b82f6 360deg);
+  animation: ssh-spin-kf 1.6s linear infinite;
+  z-index: -1;
+}
+.ssh-pending-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 7px;
+  background: #0c1221;
+  z-index: -1;
+}

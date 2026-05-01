@@ -158,11 +158,11 @@ const CLAUDE_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'notificar_usuario',
-    description: 'Envía un mensaje directo al superadmin en su chat del PM. Úsalo SIEMPRE al finalizar tu análisis para comunicar al usuario el resultado: qué pasó, qué hiciste y qué necesita saber o hacer.',
+    description: 'Escala un mensaje al PM Global. SOLO el PM Global habla con el usuario — tú nunca contactas al usuario directamente. Usa este tool para reportar resultados al PM Global o para escalarle un bloqueante que requiera su gestión. El mensaje lo recibirá el PM Global en su chat.',
     input_schema: {
       type: 'object',
       properties: {
-        mensaje: { type: 'string', description: 'Mensaje claro y conciso para el usuario. Incluye contexto, problema, acción tomada y próximos pasos si aplica.' },
+        mensaje: { type: 'string', description: 'Mensaje para el PM Global: qué hiciste, qué pasó, qué necesitas que él gestione.' },
       },
       required: ['mensaje'],
     },
@@ -257,11 +257,11 @@ const GEMINI_TOOLS: any[] = [{
     },
     {
       name: 'notificar_usuario',
-      description: 'Envía un mensaje directo al superadmin en el chat del PM. Úsalo SIEMPRE al terminar para comunicar resultado.',
+      description: 'Escala un mensaje al PM Global. SOLO el PM Global habla con el usuario — tú nunca contactas al usuario directamente. Úsalo para reportar resultados o escalar bloqueantes al PM Global.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          mensaje: { type: 'STRING', description: 'Mensaje para el usuario: qué pasó, acción tomada, qué necesita hacer.' },
+          mensaje: { type: 'STRING', description: 'Mensaje para el PM Global: qué hiciste, qué pasó, qué necesitas que él gestione.' },
         },
         required: ['mensaje'],
       },
@@ -379,21 +379,22 @@ ${planOriginal}
 → Analiza si otro agente puede resolverlo.
 → Usa \`crear_subtarea\` para crear una tarea al agente adecuado (dev-devops si es infra, dev-backend si es API, etc.).
 → Actualiza también el plan de la tarea bloqueada con \`actualizar_tarea\` si el plan original era incorrecto.
-→ Notifica al usuario con \`notificar_usuario\` explicando qué agente tomará el relevo.
+→ Reporta al PM Global con \`notificar_usuario\` explicando qué agente tomará el relevo. NO preguntes nada al usuario.
 
 ### B) Bloqueante OPERATIVO / DE NEGOCIO (dato de cliente, credencial de tercero, decisión de diseño, aprobación):
-→ NO puedes resolverlo solo. Necesitas input del stakeholder.
-→ Usa \`notificar_usuario\` con una PREGUNTA CONCRETA al stakeholder: qué información específica necesitas para continuar.
+→ NO puedes resolverlo solo — pero TAMPOCO preguntas al usuario directamente.
+→ Usa \`notificar_usuario\` para ESCALAR AL PM GLOBAL: describe exactamente qué información o decisión se necesita.
+→ El PM Global decidirá si preguntar al usuario o si puede resolverlo con los recursos del sistema.
 → Actualiza las notas de la tarea bloqueada con \`actualizar_tarea\` documentando qué se necesita.
 
 ### C) Error transitorio (timeout, red caída, API temporal):
 → Actualiza el plan de la tarea bloqueada con \`actualizar_tarea\` añadiendo instrucciones de reintento.
-→ Notifica al usuario que puede reanudar la tarea.
+→ Reporta al PM Global que la tarea puede reanudarse.
 
 ## Instrucciones
 1. Usa \`log_progreso\` para documentar tu diagnóstico.
 2. Aplica la opción A, B o C del árbol de decisión.
-3. **OBLIGATORIO**: Llama a \`notificar_usuario\` con un mensaje que explique: agente bloqueado, problema, acción tomada y próximos pasos.
+3. **OBLIGATORIO**: Llama a \`notificar_usuario\` con un mensaje DIRIGIDO AL PM GLOBAL explicando: agente bloqueado, problema, acción tomada y próximos pasos. **NUNCA pidas información al usuario directamente — solo el PM Global habla con el usuario.**
 4. Termina con \`completar_tarea\`.`;
 
       const insertResult = await db.from('tareas').insert({
@@ -688,6 +689,12 @@ export async function ejecutarEspecialista(tareaId: string, db: DB, prevContexto
     ? `\n## ⏯️ REANUDACIÓN — continúa desde donde te quedaste\n\nFuiste interrumpido. Historial de acciones previas (más reciente primero):\n\n${prevContexto}\n\n> **CRÍTICO**: Analiza el historial. Identifica el último paso completado exitosamente. Comienza desde el SIGUIENTE paso no completado. No repitas pasos ya realizados.\n`
     : '';
 
+  const vpsHost = process.env.VPS_HOST ?? '';
+  const vpsUser = process.env.VPS_USER ?? '';
+  const vpsSection = vpsHost
+    ? `\n## Conexión VPS\n- **Host:** \`${vpsHost}\`  **Usuario:** \`${vpsUser}\`\n- Las credenciales SSH (llave, passphrase, sudo password) se leen automáticamente del entorno — no necesitas pedirlas al usuario ni incluirlas en el plan.\n`
+    : '';
+
   const systemPrompt = `Eres **${agente}**, ${descAgente}.
 
 ## Tu tarea actual
@@ -697,14 +704,21 @@ export async function ejecutarEspecialista(tareaId: string, db: DB, prevContexto
 ${plan}
 ${resumptionSection}
 ---
+${vpsSection}
+## Jerarquía de comunicación
+**NUNCA contactes al usuario directamente.** Solo el PM Global habla con el usuario.
+Tu cadena es: tú → PM de área → PM Global → usuario.
+- Si tienes resultados para reportar: usa \`notificar_usuario\` para enviárselos al PM Global.
+- Si tienes un bloqueante: usa \`reportar_bloqueante\` para escalarlo al PM.
+- **Nunca preguntes al usuario por credenciales, datos de acceso o decisiones** — escala al PM Global con \`notificar_usuario\` describiendo qué necesitas.
 
 ## Herramientas disponibles
 - **log_progreso**: Registra cada paso que ejecutas.
-- **ejecutar_ssh**: Ejecuta comandos reales en servidores remotos vía SSH. Si el plan incluye credenciales SSH (usuario, contraseña, IP), úsalas directamente en esta herramienta. Puedes encadenar comandos con &&. Para comandos lentos (apt install, docker pull, docker-compose up) usa \`timeout_segundos: 600\` o más.
-- **actualizar_tarea**: Actualiza el plan o notas de otra tarea existente (úsala como PM para corregir el plan de una tarea bloqueada).
-- **notificar_usuario**: Envía un mensaje directo al superadmin en el chat. **Obligatorio usarlo** antes de llamar \`completar_tarea\` cuando tengas información relevante para el usuario.
+- **ejecutar_ssh**: Ejecuta comandos reales en servidores remotos vía SSH. Usa \`host: "${vpsHost || 'IP_SERVIDOR'}"\` y \`usuario: "${vpsUser || 'USER'}"\` del VPS. Puedes encadenar comandos con &&. Para comandos lentos (apt install, docker pull, docker-compose up) usa \`timeout_segundos: 600\` o más.
+- **actualizar_tarea**: Actualiza el plan o notas de otra tarea existente.
+- **notificar_usuario**: Escala resultados o bloqueantes al PM Global. **Obligatorio usarlo** al terminar para reportar al PM Global qué hiciste o qué necesitas.
 - **completar_tarea**: Marca la tarea como terminada.
-- **reportar_bloqueante**: Solo si algo es genuinamente imposible de resolver (credenciales incorrectas, permiso del proveedor, etc.).
+- **reportar_bloqueante**: Solo si algo es genuinamente imposible de resolver (error irrecuperable, permiso de proveedor externo).
 
 ## Instrucciones
 1. Ejecuta el plan paso a paso.

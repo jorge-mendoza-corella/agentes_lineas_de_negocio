@@ -41,26 +41,27 @@ async function ejecutarSSH(
     }, timeoutMs);
 
     conn.on('ready', () => {
-      // DEBIAN_FRONTEND=noninteractive evita prompts interactivos en apt
-      let cmdFinal = `DEBIAN_FRONTEND=noninteractive ${comando}`;
+      // Si es root, quitar prefijos sudo — ya tiene todos los permisos
+      const esRoot = usuario === 'root';
+      const cmdSinSudo = esRoot ? comando.replace(/\bsudo\s+/g, '') : comando;
+      let cmdFinal = `DEBIAN_FRONTEND=noninteractive ${cmdSinSudo}`;
 
-      // Si el comando usa sudo en shell no interactiva, inyectar contraseña via stdin (-S).
-      // Se eliminan todos los prefijos "sudo" del comando y se ejecuta todo bajo una sola
-      // sesión root con "sudo bash -c". La codificación base64 evita problemas de escaping.
+      // Para usuarios no-root con sudo: inyectar contraseña mediante PTY + heredoc.
+      // PTY satisface "requiretty" de sudoers; -S lee la contraseña de stdin.
       const sudoPass = process.env.SSH_SUDO_PASSWORD;
-      if (sudoPass && /\bsudo\b/.test(comando)) {
+      if (!esRoot && sudoPass && /\bsudo\b/.test(comando)) {
         const safePass  = sudoPass.replace(/'/g, "'\\''");
-        // Quitar prefijos sudo del comando (ya correremos todo como root)
         const cmdAsRoot = `DEBIAN_FRONTEND=noninteractive ${comando.replace(/\bsudo\s+/g, '')}`;
-        // Codificar en base64 para evitar escaping de comillas/caracteres especiales
         const b64 = Buffer.from(cmdAsRoot).toString('base64');
         cmdFinal = `echo '${safePass}' | sudo -Sp '' bash -c "$(echo '${b64}' | base64 -d)"`;
       }
 
-      conn.exec(cmdFinal, (err, stream) => {
+      // pty:true satisface "Defaults requiretty" en sudoers sin necesitar sesión interactiva
+      conn.exec(cmdFinal, { pty: true }, (err, stream) => {
         if (err) { clearTimeout(timer); conn.end(); reject(err); return; }
+        // Con PTY activo stderr se mezcla en stdout; capturamos ambos canales por si acaso
         stream.on('data', (d: Buffer) => { stdout += d.toString(); });
-        stream.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+        stream.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
         stream.on('close', (code: number) => {
           clearTimeout(timer);
           conn.end();
@@ -132,10 +133,12 @@ const CLAUDE_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        host:     { type: 'string', description: 'IP o hostname del servidor (ej: 45.232.252.100)' },
-        usuario:  { type: 'string', description: 'Usuario SSH (ej: srvsozu)' },
-        password: { type: 'string', description: 'Passphrase de la llave privada SSH (dejar vacío si está en el entorno)' },
-        comando:  { type: 'string', description: 'Comando shell a ejecutar en el servidor. Usa && para encadenar pasos.' },
+        host:             { type: 'string', description: 'IP o hostname del servidor (ej: 45.232.252.100)' },
+        usuario:          { type: 'string', description: 'Usuario SSH (ej: srvsozu). Para ejecutar como root usa "root".' },
+        password:         { type: 'string', description: 'Passphrase de la llave privada SSH (dejar vacío si está en el entorno)' },
+        comando:          { type: 'string', description: 'Comando shell a ejecutar en el servidor. Usa && para encadenar pasos. Si usuario es root, NO uses sudo.' },
+        timeout_segundos: { type: 'number', description: 'Timeout en segundos. Default 300. Para apt install / docker pull usa 600 o más.' },
+        como_root:        { type: 'boolean', description: 'Si true, conecta como usuario root (evita sudo completamente). Úsalo cuando sudo falle o para comandos de sistema.' },
       },
       required: ['host', 'usuario', 'comando'],
     },
@@ -211,10 +214,12 @@ const GEMINI_TOOLS: any[] = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          host:     { type: 'STRING', description: 'IP del servidor' },
-          usuario:  { type: 'STRING', description: 'Usuario SSH' },
-          password: { type: 'STRING', description: 'Contraseña SSH' },
-          comando:  { type: 'STRING', description: 'Comando shell a ejecutar' },
+          host:             { type: 'STRING', description: 'IP del servidor' },
+          usuario:          { type: 'STRING', description: 'Usuario SSH. Para root usa "root".' },
+          password:         { type: 'STRING', description: 'Contraseña SSH' },
+          comando:          { type: 'STRING', description: 'Comando shell a ejecutar. Si usuario es root, NO uses sudo.' },
+          timeout_segundos: { type: 'NUMBER', description: 'Timeout en segundos. Default 300. Para apt install / docker pull usa 600.' },
+          como_root:        { type: 'BOOLEAN', description: 'Si true, conecta como root (evita sudo). Úsalo cuando sudo falle.' },
         },
         required: ['host', 'usuario', 'password', 'comando'],
       },
@@ -432,10 +437,13 @@ ${planOriginal}
   }
 
   if (nombre === 'ejecutar_ssh') {
-    const host     = (input.host     as string) || process.env.SSH_DEFAULT_HOST;
-    const usuario  = (input.usuario  as string) || process.env.SSH_DEFAULT_USER;
-    const password = (input.password as string) || process.env.SSH_DEFAULT_PASSWORD;
-    const comando  = input.comando as string;
+    const comoRoot        = !!(input.como_root as boolean);
+    const host            = (input.host     as string) || process.env.SSH_DEFAULT_HOST;
+    const usuarioBase     = (input.usuario  as string) || process.env.SSH_DEFAULT_USER;
+    const usuario         = comoRoot ? 'root' : (usuarioBase || '');
+    const password        = (input.password as string) || process.env.SSH_DEFAULT_PASSWORD;
+    const comando         = input.comando as string;
+    const timeoutMs       = ((input.timeout_segundos as number) || 300) * 1000;
 
     if (!host || !usuario || !password) {
       return { resultado: JSON.stringify({ error: 'Credenciales SSH incompletas. Proporciona host, usuario y password.' }), terminar: false };
@@ -461,7 +469,7 @@ ${planOriginal}
     });
 
     try {
-      const { stdout, stderr, exitCode } = await ejecutarSSH(host, usuario, password, comando);
+      const { stdout, stderr, exitCode } = await ejecutarSSH(host, usuario, password, comando, timeoutMs);
       const salida = stdout.slice(0, 2000) + (stderr ? `\n[STDERR] ${stderr.slice(0, 500)}` : '');
 
       await db.from('bitacora_actividad').insert({
@@ -611,7 +619,7 @@ ${resumptionSection}
 
 ## Herramientas disponibles
 - **log_progreso**: Registra cada paso que ejecutas.
-- **ejecutar_ssh**: Ejecuta comandos reales en servidores remotos vía SSH. Si el plan incluye credenciales SSH (usuario, contraseña, IP), úsalas directamente en esta herramienta. Puedes encadenar comandos con &&.
+- **ejecutar_ssh**: Ejecuta comandos reales en servidores remotos vía SSH. Si el plan incluye credenciales SSH (usuario, contraseña, IP), úsalas directamente en esta herramienta. Puedes encadenar comandos con &&. Para comandos lentos (apt install, docker pull, docker-compose up) usa \`timeout_segundos: 600\` o más.
 - **actualizar_tarea**: Actualiza el plan o notas de otra tarea existente (úsala como PM para corregir el plan de una tarea bloqueada).
 - **notificar_usuario**: Envía un mensaje directo al superadmin en el chat. **Obligatorio usarlo** antes de llamar \`completar_tarea\` cuando tengas información relevante para el usuario.
 - **completar_tarea**: Marca la tarea como terminada.

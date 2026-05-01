@@ -596,12 +596,21 @@ function LoungeDecorations() {
 // ── Pasos del plan de ejecución ───────────────────────────────────────────────
 function parsePlanSteps(plan: string): string[] {
   if (!plan) return [];
-  // Eliminar secciones de encabezado tipo "=== ALGO ==="
+
+  // Formato "=== PASO N — Descripción ===" (generado por el PM)
+  const pasoHeaderRe = /^===\s*PASO\s+(\d+)\s*[—–\-]\s*(.+?)\s*===\s*$/gim;
+  const headers: string[] = [];
+  let m;
+  while ((m = pasoHeaderRe.exec(plan)) !== null) {
+    headers.push(`Paso ${m[1]}: ${m[2].trim()}`);
+  }
+  if (headers.length > 0) return headers;
+
+  // Fallback: listas numeradas o con viñetas
   const sinEncabezados = plan.replace(/^===.*===\s*$/gm, '');
   return sinEncabezados
     .split('\n')
     .map(l => l.trim())
-    // Aceptar: "1." "1)" "1-" "- " "* " "• " "**1.**" "Paso 1" "Step 1"
     .filter(l =>
       /^\d+[\.\)\-]\s+\S/.test(l)        ||
       /^\*\*\d+[\.\)]\*?\*?\s+\S/.test(l) ||
@@ -619,6 +628,15 @@ function parsePlanSteps(plan: string): string[] {
       .trim()
     )
     .filter(l => l.length > 4);
+}
+
+// Extrae los comandos SSH de las entradas de bitácora de una tarea
+function extraerComandosSSH(bitacora: Entrada[], tareaId: string) {
+  return bitacora
+    .filter(b => b.tarea_id === tareaId)
+    .filter(b => b.accion.startsWith('🖥️') || b.accion.startsWith('📤'))
+    .slice()
+    .reverse(); // cronológico (bitacora viene newest-first)
 }
 
 // ── Interfaz papel volador ────────────────────────────────────────────────────
@@ -1066,7 +1084,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                         }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-slate-200 leading-snug">{t.descripcion}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
+                          <div className="flex items-center flex-wrap gap-2 mt-0.5">
                             <p className="text-[10px] capitalize font-medium" style={{
                               color: t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? selCfg.color : '#64748b',
                             }}>{t.estado.replace('_',' ')}</p>
@@ -1082,7 +1100,32 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                 }
                               </span>
                             )}
+                            {/* Indicador de paso actual */}
+                            {t.estado === 'en_progreso' && total > 0 && !finalizando && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                                style={{ background:`${selCfg.color}25`, color:selCfg.accent }}>
+                                📍 paso {Math.min(doneCount + 1, total)}/{total}
+                              </span>
+                            )}
+                            {finalizando && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                                style={{ background:'rgba(96,165,250,0.15)', color:'#60a5fa' }}>
+                                📍 paso {total}/{total}
+                              </span>
+                            )}
                           </div>
+                          {/* Último comando SSH ejecutado */}
+                          {t.estado === 'en_progreso' && (() => {
+                            const cmds = extraerComandosSSH(bitacora, t.id).filter(b => b.accion.startsWith('🖥️'));
+                            const ultimo = cmds[cmds.length - 1];
+                            if (!ultimo) return null;
+                            const cmd = ultimo.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '');
+                            return (
+                              <p className="text-[9px] font-mono mt-1 truncate" style={{ color:'#4ade80', opacity:0.7 }}>
+                                $ {cmd.slice(0, 80)}{cmd.length > 80 ? '…' : ''}
+                              </p>
+                            );
+                          })()}
                         </div>
                         <span className="text-slate-600 text-xs mt-0.5 shrink-0">{isExpanded ? '▲' : '▼'}</span>
                       </div>
@@ -1096,37 +1139,88 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                             </p>
                           )}
                           {steps.length > 0 && (
-                            <div className="space-y-1">
+                            <div className="space-y-0.5">
                               {steps.map((step, i) => {
                                 const isCompleted = t.estado === 'completada';
                                 const isActive    = t.estado === 'en_progreso';
                                 const stepDone    = isCompleted || (doneCount > 0 && i < doneCount);
                                 const stepActive  = (isActive && i === Math.min(doneCount, steps.length - 1)) || (finalizando && i === steps.length - 1);
                                 return (
-                                  <div key={i} className="flex items-start gap-1.5">
-                                    <span className="mt-0.5 shrink-0" style={{ fontSize:10 }}>
-                                      {stepDone ? '✅' : stepActive ? '🔵' : '⚪'}
-                                    </span>
-                                    <p className="text-[10px] leading-snug" style={{
-                                      color: stepDone ? '#86efac' : stepActive ? selCfg.accent : '#475569',
-                                      textDecoration: stepDone ? 'line-through' : 'none',
-                                    }}>{step}</p>
+                                  <div key={i} className="rounded-lg px-1.5 py-1" style={{
+                                    background: stepActive ? `${selCfg.color}08` : 'transparent',
+                                    border: stepActive ? `1px solid ${selCfg.color}20` : '1px solid transparent',
+                                  }}>
+                                    <div className="flex items-start gap-1.5">
+                                      <span className="mt-0.5 shrink-0" style={{ fontSize:10 }}>
+                                        {stepDone ? '✅' : stepActive ? '🔵' : '⚪'}
+                                      </span>
+                                      <p className="text-[10px] leading-snug font-medium" style={{
+                                        color: stepDone ? '#86efac' : stepActive ? selCfg.accent : '#475569',
+                                        textDecoration: stepDone ? 'line-through' : 'none',
+                                      }}>{step}</p>
+                                    </div>
                                   </div>
                                 );
                               })}
                             </div>
                           )}
+                          {/* Bitácora de comandos SSH — todos en orden cronológico */}
+                          {(() => {
+                            const sshLogs = extraerComandosSSH(bitacora, t.id);
+                            if (sshLogs.length === 0) return null;
+                            return (
+                              <div className="mt-3">
+                                <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color:`${selCfg.color}55` }}>
+                                  Comandos ejecutados
+                                </p>
+                                <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                                  {sshLogs.map((b, i) => {
+                                    const isCmd = b.accion.startsWith('🖥️');
+                                    const txt = isCmd
+                                      ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
+                                      : b.accion.replace(/^📤\s*SSH resultado \(exit \d+\):\s*/, '');
+                                    return (
+                                      <div key={i} className="rounded px-2 py-1" style={{
+                                        background: isCmd ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.2)',
+                                      }}>
+                                        <p className="text-[8px] font-mono break-all leading-relaxed" style={{
+                                          color: isCmd ? '#4ade80' : '#475569',
+                                        }}>
+                                          {isCmd ? '$ ' : '  '}{txt.slice(0, 200)}{txt.length > 200 ? '…' : ''}
+                                        </p>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {/* Vista sin plan: mostrar bitácora completa formateada */}
                           {steps.length === 0 && bitacora.filter(b => b.tarea_id === t.id).length > 0 && (
                             <div className="space-y-1">
                               <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color:`${selCfg.color}60` }}>
-                                Acciones registradas
+                                Comandos ejecutados
                               </p>
-                              {bitacora.filter(b => b.tarea_id === t.id).slice(0, 10).map((b, i) => (
-                                <div key={i} className="flex items-start gap-1.5">
-                                  <span className="mt-0.5 shrink-0 text-[10px]">✅</span>
-                                  <p className="text-[10px] leading-snug text-slate-400">{b.accion.slice(0, 120)}</p>
-                                </div>
-                              ))}
+                              {bitacora.filter(b => b.tarea_id === t.id).slice().reverse().slice(0, 20).map((b, i) => {
+                                const isCmd    = b.accion.startsWith('🖥️');
+                                const isResult = b.accion.startsWith('📤');
+                                const txt = isCmd
+                                  ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
+                                  : isResult
+                                    ? b.accion.replace(/^📤\s*SSH resultado \(exit \d+\):\s*/, '')
+                                    : b.accion;
+                                return (
+                                  <div key={i} className="rounded-lg px-2 py-1.5" style={{
+                                    background: isCmd ? 'rgba(0,0,0,0.5)' : isResult ? 'rgba(0,0,0,0.25)' : 'transparent',
+                                  }}>
+                                    <p className="text-[8px] font-mono break-all leading-relaxed" style={{
+                                      color: isCmd ? '#4ade80' : isResult ? '#64748b' : '#94a3b8',
+                                    }}>
+                                      {isCmd ? '$ ' : isResult ? '  ' : ''}{txt.slice(0, 200)}{txt.length > 200 ? '…' : ''}
+                                    </p>
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                           {steps.length === 0 && logCount === 0 && !t.notas && (

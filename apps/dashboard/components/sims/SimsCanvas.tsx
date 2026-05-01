@@ -1523,55 +1523,64 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                     const isError   = exitCode != null && exitCode !== '0';
                                     const isOk      = exitCode === '0';
 
+                                    // franja lateral: cyan=cmd, slate=output, rojo=error, azul=pending
+                                    const accentColor = isPending ? '#3b82f6' : isError ? '#ef4444' : isCmd ? '#22d3ee' : '#334155';
                                     const card = (
                                       <div key={b.id} style={{
                                         borderRadius: 8,
-                                        background: isPending ? 'rgba(12,18,33,0.95)' : isError ? 'rgba(40,12,12,0.7)' : isCmd ? 'rgba(8,14,26,0.9)' : 'rgba(15,20,30,0.5)',
-                                        border: isPending ? 'none' : isError ? '1px solid rgba(239,68,68,0.25)' : isNewest && !isPending ? `1px solid ${selCfg.color}33` : '1px solid rgba(255,255,255,0.04)',
-                                        padding: '6px 10px 7px',
+                                        background: isPending ? 'rgba(12,18,33,0.95)' : isError ? 'rgba(30,8,8,0.85)' : isCmd ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
+                                        border: isPending ? 'none' : `1px solid ${accentColor}22`,
+                                        display:'flex', overflow:'hidden',
                                       }}>
-                                        {/* Meta row */}
-                                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
-                                          {/* Número de orden */}
+                                        {/* Franja lateral de tipo */}
+                                        <div style={{
+                                          width: 28, flexShrink:0,
+                                          background: `${accentColor}18`,
+                                          borderRight: `2px solid ${accentColor}55`,
+                                          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3,
+                                          padding:'6px 0',
+                                        }}>
+                                          <span style={{ fontSize:11 }}>{isCmd ? '⌨' : isError ? '⚠' : '↩'}</span>
                                           <span style={{
-                                            fontSize:9, fontWeight:800, fontFamily:'monospace',
-                                            background: isPending ? '#1d4ed8' : isError ? 'rgba(239,68,68,0.2)' : isOk ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)',
-                                            color: isPending ? '#93c5fd' : isError ? '#f87171' : isOk ? '#4ade80' : '#64748b',
-                                            padding:'1px 5px', borderRadius:4, flexShrink:0,
-                                          }}>#{num}</span>
-
-                                          {isNewest && !isPending && (
-                                            <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
-                                          )}
-
-                                          {/* Timestamp */}
-                                          <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
-                                            <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora}</span>
-                                            <span style={{ fontSize:8, color:'#475569' }}>{tsFecha}</span>
-                                          </div>
-
-                                          {/* Status badge */}
-                                          <div style={{ marginLeft:'auto', flexShrink:0 }}>
-                                            {isPending && (
-                                              <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa', letterSpacing:'0.05em' }}>⟳ ESPERANDO</span>
-                                            )}
-                                            {isError && (
-                                              <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode}</span>
-                                            )}
-                                            {!isPending && isOk && (
-                                              <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>
-                                            )}
-                                          </div>
+                                            fontSize:7, fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase',
+                                            color: accentColor, writingMode:'vertical-rl', transform:'rotate(180deg)',
+                                          }}>{isCmd ? 'CMD' : 'OUT'}</span>
                                         </div>
 
-                                        {/* Command text */}
-                                        <p style={{
-                                          fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0,
-                                          color: isPending ? '#93c5fd' : isCmd ? '#4ade80' : isError ? '#fca5a5' : '#64748b',
-                                        }}>
-                                          {isCmd && <span style={{ color: isPending ? '#60a5fa' : '#22d3ee', marginRight:4 }}>$</span>}
-                                          {txt.slice(0, 400)}{txt.length > 400 ? '…' : ''}
-                                        </p>
+                                        {/* Contenido */}
+                                        <div style={{ flex:1, padding:'6px 9px 7px', minWidth:0 }}>
+                                          {/* Meta row */}
+                                          <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
+                                            <span style={{
+                                              fontSize:9, fontWeight:800, fontFamily:'monospace',
+                                              background: `${accentColor}22`, color: accentColor,
+                                              padding:'1px 5px', borderRadius:4, flexShrink:0,
+                                            }}>#{num}</span>
+
+                                            {isNewest && !isPending && (
+                                              <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
+                                            )}
+
+                                            <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
+                                              <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora}</span>
+                                              <span style={{ fontSize:8, color:'#475569' }}>{tsFecha}</span>
+                                            </div>
+
+                                            <div style={{ marginLeft:'auto', flexShrink:0 }}>
+                                              {isPending && <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa' }}>⟳ ESPERANDO</span>}
+                                              {isError   && <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode}</span>}
+                                              {!isPending && isOk && <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>}
+                                            </div>
+                                          </div>
+
+                                          <p style={{
+                                            fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0,
+                                            color: isPending ? '#93c5fd' : isCmd ? '#4ade80' : isError ? '#fca5a5' : '#64748b',
+                                          }}>
+                                            {isCmd && <span style={{ color: isPending ? '#60a5fa' : '#22d3ee', marginRight:5, fontWeight:700 }}>$</span>}
+                                            {txt.slice(0, 400)}{txt.length > 400 ? '…' : ''}
+                                          </p>
+                                        </div>
                                       </div>
                                     );
 
@@ -1622,37 +1631,54 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                         const isError2   = exitCode2 != null && exitCode2 !== '0';
                                         const isOk2      = exitCode2 === '0';
 
+                                        const accentColor2 = isPending2 ? '#3b82f6' : isError2 ? '#ef4444' : isCmd2 ? '#22d3ee' : '#334155';
                                         const card2 = (
                                           <div key={b.id} style={{
                                             borderRadius: 8,
-                                            background: isPending2 ? 'rgba(12,18,33,0.95)' : isError2 ? 'rgba(40,12,12,0.7)' : isCmd2 ? 'rgba(8,14,26,0.9)' : 'rgba(15,20,30,0.5)',
-                                            border: isPending2 ? 'none' : isError2 ? '1px solid rgba(239,68,68,0.25)' : isNewest2 && !isPending2 ? `1px solid ${selCfg.color}33` : '1px solid rgba(255,255,255,0.04)',
-                                            padding: '6px 10px 7px',
+                                            background: isPending2 ? 'rgba(12,18,33,0.95)' : isError2 ? 'rgba(30,8,8,0.85)' : isCmd2 ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
+                                            border: isPending2 ? 'none' : `1px solid ${accentColor2}22`,
+                                            display:'flex', overflow:'hidden',
                                           }}>
-                                            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                                            {/* Franja lateral */}
+                                            <div style={{
+                                              width: 28, flexShrink:0,
+                                              background: `${accentColor2}18`,
+                                              borderRight: `2px solid ${accentColor2}55`,
+                                              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3,
+                                              padding:'6px 0',
+                                            }}>
+                                              <span style={{ fontSize:11 }}>{isCmd2 ? '⌨' : isError2 ? '⚠' : '↩'}</span>
                                               <span style={{
-                                                fontSize:9, fontWeight:800, fontFamily:'monospace',
-                                                background: isPending2 ? '#1d4ed8' : isError2 ? 'rgba(239,68,68,0.2)' : isOk2 ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)',
-                                                color: isPending2 ? '#93c5fd' : isError2 ? '#f87171' : isOk2 ? '#4ade80' : '#64748b',
-                                                padding:'1px 5px', borderRadius:4, flexShrink:0,
-                                              }}>#{num2}</span>
-                                              {isNewest2 && !isPending2 && (
-                                                <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
-                                              )}
-                                              <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
-                                                <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora2}</span>
-                                                <span style={{ fontSize:8, color:'#475569' }}>{tsFecha2}</span>
-                                              </div>
-                                              <div style={{ marginLeft:'auto', flexShrink:0 }}>
-                                                {isPending2 && <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa' }}>⟳ ESPERANDO</span>}
-                                                {isError2   && <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode2}</span>}
-                                                {!isPending2 && isOk2 && <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>}
-                                              </div>
+                                                fontSize:7, fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase',
+                                                color: accentColor2, writingMode:'vertical-rl', transform:'rotate(180deg)',
+                                              }}>{isCmd2 ? 'CMD' : 'OUT'}</span>
                                             </div>
-                                            <p style={{ fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0, color: isPending2 ? '#93c5fd' : isCmd2 ? '#4ade80' : isError2 ? '#fca5a5' : '#64748b' }}>
-                                              {isCmd2 && <span style={{ color: isPending2 ? '#60a5fa' : '#22d3ee', marginRight:4 }}>$</span>}
-                                              {txt2.slice(0, 400)}{txt2.length > 400 ? '…' : ''}
-                                            </p>
+
+                                            <div style={{ flex:1, padding:'6px 9px 7px', minWidth:0 }}>
+                                              <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
+                                                <span style={{
+                                                  fontSize:9, fontWeight:800, fontFamily:'monospace',
+                                                  background: `${accentColor2}22`, color: accentColor2,
+                                                  padding:'1px 5px', borderRadius:4, flexShrink:0,
+                                                }}>#{num2}</span>
+                                                {isNewest2 && !isPending2 && (
+                                                  <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
+                                                )}
+                                                <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
+                                                  <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora2}</span>
+                                                  <span style={{ fontSize:8, color:'#475569' }}>{tsFecha2}</span>
+                                                </div>
+                                                <div style={{ marginLeft:'auto', flexShrink:0 }}>
+                                                  {isPending2 && <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa' }}>⟳ ESPERANDO</span>}
+                                                  {isError2   && <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode2}</span>}
+                                                  {!isPending2 && isOk2 && <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>}
+                                                </div>
+                                              </div>
+                                              <p style={{ fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0, color: isPending2 ? '#93c5fd' : isCmd2 ? '#4ade80' : isError2 ? '#fca5a5' : '#64748b' }}>
+                                                {isCmd2 && <span style={{ color: isPending2 ? '#60a5fa' : '#22d3ee', marginRight:5, fontWeight:700 }}>$</span>}
+                                                {txt2.slice(0, 400)}{txt2.length > 400 ? '…' : ''}
+                                              </p>
+                                            </div>
                                           </div>
                                         );
 

@@ -129,18 +129,31 @@ const CLAUDE_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'ejecutar_ssh',
-    description: 'Ejecuta un comando en un servidor remoto vía SSH usando llave privada (configurada en el servidor). El campo password es la passphrase de la llave privada, pero si ya está en el entorno no es necesario. Úsalo para instalar paquetes, configurar servicios, editar archivos y cualquier operación en el VPS. Siempre usa -y en comandos apt.',
+    description: 'Ejecuta un comando en un servidor remoto vía SSH usando llave privada. Host y usuario son requeridos; password solo si la passphrase NO está en SSH_KEY_PASSPHRASE del entorno. Úsalo para instalar paquetes, configurar servicios, editar archivos y cualquier operación en el VPS. Siempre usa -y en comandos apt.',
     input_schema: {
       type: 'object',
       properties: {
         host:             { type: 'string', description: 'IP o hostname del servidor (ej: 45.232.252.100)' },
         usuario:          { type: 'string', description: 'Usuario SSH (ej: srvsozu). Para ejecutar como root usa "root".' },
-        password:         { type: 'string', description: 'Passphrase de la llave privada SSH (dejar vacío si está en el entorno)' },
+        password:         { type: 'string', description: 'Passphrase de la llave privada SSH (omitir — ya está configurada en el entorno)' },
         comando:          { type: 'string', description: 'Comando shell a ejecutar en el servidor. Usa && para encadenar pasos. Si usuario es root, NO uses sudo.' },
         timeout_segundos: { type: 'number', description: 'Timeout en segundos. Default 300. Para apt install / docker pull usa 600 o más.' },
         como_root:        { type: 'boolean', description: 'Si true, conecta como usuario root (evita sudo completamente). Úsalo cuando sudo falle o para comandos de sistema.' },
       },
       required: ['host', 'usuario', 'comando'],
+    },
+  },
+  {
+    name: 'ejecutar_ssh_env',
+    description: 'Ejecuta un comando en el VPS principal usando TODAS las credenciales del entorno (host, usuario, llave, passphrase). No necesitas pasar ningún parámetro de conexión — úsalo siempre que el plan no especifique un servidor diferente al VPS principal.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        comando:          { type: 'string', description: 'Comando shell a ejecutar en el VPS. Usa && para encadenar. Para sudo usa el formato normal — la contraseña se inyecta automáticamente.' },
+        timeout_segundos: { type: 'number', description: 'Timeout en segundos. Default 300. Para apt install / docker pull usa 600 o más.' },
+        como_root:        { type: 'boolean', description: 'Si true, conecta como root (evita sudo). Úsalo cuando sudo falle.' },
+      },
+      required: ['comando'],
     },
   },
   {
@@ -228,18 +241,31 @@ const GEMINI_TOOLS: any[] = [{
     },
     {
       name: 'ejecutar_ssh',
-      description: 'Ejecuta un comando en servidor remoto vía SSH.',
+      description: 'Ejecuta un comando en servidor remoto vía SSH. Password solo si la passphrase no está en el entorno.',
       parameters: {
         type: 'OBJECT',
         properties: {
           host:             { type: 'STRING', description: 'IP del servidor' },
           usuario:          { type: 'STRING', description: 'Usuario SSH. Para root usa "root".' },
-          password:         { type: 'STRING', description: 'Contraseña SSH' },
+          password:         { type: 'STRING', description: 'Passphrase SSH (omitir — ya está en el entorno)' },
           comando:          { type: 'STRING', description: 'Comando shell a ejecutar. Si usuario es root, NO uses sudo.' },
           timeout_segundos: { type: 'NUMBER', description: 'Timeout en segundos. Default 300. Para apt install / docker pull usa 600.' },
           como_root:        { type: 'BOOLEAN', description: 'Si true, conecta como root (evita sudo). Úsalo cuando sudo falle.' },
         },
-        required: ['host', 'usuario', 'password', 'comando'],
+        required: ['host', 'usuario', 'comando'],
+      },
+    },
+    {
+      name: 'ejecutar_ssh_env',
+      description: 'Ejecuta un comando en el VPS principal usando credenciales del entorno. No necesitas pasar host, usuario ni password — todo está configurado. Úsalo siempre que el destino sea el VPS principal.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          comando:          { type: 'STRING', description: 'Comando shell a ejecutar en el VPS. Usa && para encadenar.' },
+          timeout_segundos: { type: 'NUMBER', description: 'Timeout en segundos. Default 300. Para apt install / docker pull usa 600.' },
+          como_root:        { type: 'BOOLEAN', description: 'Si true, conecta como root (evita sudo). Úsalo cuando sudo falle.' },
+        },
+        required: ['comando'],
       },
     },
     {
@@ -518,17 +544,18 @@ ${planOriginal}
     return { resultado: JSON.stringify({ ok: true, subtarea_id: data.id }), terminar: false };
   }
 
-  if (nombre === 'ejecutar_ssh') {
+  if (nombre === 'ejecutar_ssh' || nombre === 'ejecutar_ssh_env') {
+    const esEnv           = nombre === 'ejecutar_ssh_env';
     const comoRoot        = !!(input.como_root as boolean);
-    const host            = (input.host     as string) || process.env.SSH_DEFAULT_HOST;
-    const usuarioBase     = (input.usuario  as string) || process.env.SSH_DEFAULT_USER;
+    const host            = esEnv ? (process.env.VPS_HOST || process.env.SSH_DEFAULT_HOST || '') : ((input.host as string) || process.env.VPS_HOST || process.env.SSH_DEFAULT_HOST || '');
+    const usuarioBase     = esEnv ? (process.env.VPS_USER || process.env.SSH_DEFAULT_USER || '') : ((input.usuario as string) || process.env.VPS_USER || process.env.SSH_DEFAULT_USER || '');
     const usuario         = comoRoot ? 'root' : (usuarioBase || '');
-    const password        = (input.password as string) || process.env.SSH_DEFAULT_PASSWORD;
+    const password        = (input.password as string) || process.env.SSH_KEY_PASSPHRASE || process.env.SSH_DEFAULT_PASSWORD || '';
     const comando         = input.comando as string;
     const timeoutMs       = ((input.timeout_segundos as number) || 300) * 1000;
 
-    if (!host || !usuario || !password) {
-      return { resultado: JSON.stringify({ error: 'Credenciales SSH incompletas. Proporciona host, usuario y password.' }), terminar: false };
+    if (!host || !usuario) {
+      return { resultado: JSON.stringify({ error: 'Credenciales SSH incompletas. Asegúrate de que VPS_HOST y VPS_USER estén en el entorno.' }), terminar: false };
     }
 
     // Detectar uso incorrecto: nunca ejecutar el comando ssh dentro de ejecutar_ssh
@@ -714,7 +741,8 @@ Tu cadena es: tú → PM de área → PM Global → usuario.
 
 ## Herramientas disponibles
 - **log_progreso**: Registra cada paso que ejecutas.
-- **ejecutar_ssh**: Ejecuta comandos reales en servidores remotos vía SSH. Usa \`host: "${vpsHost || 'IP_SERVIDOR'}"\` y \`usuario: "${vpsUser || 'USER'}"\` del VPS. Puedes encadenar comandos con &&. Para comandos lentos (apt install, docker pull, docker-compose up) usa \`timeout_segundos: 600\` o más.
+- **ejecutar_ssh_env**: **PREFERIDA** para el VPS principal. Ejecuta un comando sin pasar host/usuario/password — todo desde entorno. Solo necesitas el \`comando\`.
+- **ejecutar_ssh**: Para servidores distintos al VPS principal. Requiere \`host\` y \`usuario\`. Puedes omitir \`password\` si la passphrase está en el entorno.
 - **actualizar_tarea**: Actualiza el plan o notas de otra tarea existente.
 - **notificar_usuario**: Escala resultados o bloqueantes al PM Global. **Obligatorio usarlo** al terminar para reportar al PM Global qué hiciste o qué necesitas.
 - **completar_tarea**: Marca la tarea como terminada.

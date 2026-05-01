@@ -167,6 +167,24 @@ const CLAUDE_TOOLS: Anthropic.Tool[] = [
       required: ['mensaje'],
     },
   },
+  {
+    name: 'crear_subtarea',
+    description: 'Crea y dispara una nueva tarea para un agente especialista. Úsalo cuando el bloqueante sea técnico y otro agente pueda resolverlo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agente_asignado: {
+          type: 'string',
+          enum: ['dev-backend','dev-bd','dev-frontend','dev-devops','dev-testing','dev-diseno','dev-documentador','dev-ciberseguridad','dev-redes','dev-soporte'],
+          description: 'Agente que resolverá el problema técnico',
+        },
+        descripcion:    { type: 'string', description: 'Resumen breve de lo que debe hacer el agente' },
+        plan_ejecucion: { type: 'string', description: 'Plan detallado con pasos, comandos y criterio de éxito. Sé exhaustivo.' },
+        proyecto_id:    { type: 'string', description: 'UUID del proyecto relacionado (opcional)' },
+      },
+      required: ['agente_asignado', 'descripcion', 'plan_ejecucion'],
+    },
+  },
 ];
 
 // ── Tools para Gemini ────────────────────────────────────────────────────
@@ -246,6 +264,24 @@ const GEMINI_TOOLS: any[] = [{
           mensaje: { type: 'STRING', description: 'Mensaje para el usuario: qué pasó, acción tomada, qué necesita hacer.' },
         },
         required: ['mensaje'],
+      },
+    },
+    {
+      name: 'crear_subtarea',
+      description: 'Crea y dispara una nueva tarea para un agente especialista. Úsalo cuando el bloqueante sea técnico.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          agente_asignado: {
+            type: 'STRING',
+            enum: ['dev-backend','dev-bd','dev-frontend','dev-devops','dev-testing','dev-diseno','dev-documentador','dev-ciberseguridad','dev-redes','dev-soporte'],
+            description: 'Agente que resolverá el problema técnico',
+          },
+          descripcion:    { type: 'STRING', description: 'Resumen breve de la tarea' },
+          plan_ejecucion: { type: 'STRING', description: 'Plan detallado con pasos, comandos y criterio de éxito.' },
+          proyecto_id:    { type: 'STRING', description: 'UUID del proyecto relacionado (opcional)' },
+        },
+        required: ['agente_asignado', 'descripcion', 'plan_ejecucion'],
       },
     },
   ],
@@ -337,13 +373,28 @@ async function handleTool(
 ## Plan original de la tarea bloqueada (extracto)
 ${planOriginal}
 
-## Tu misión
-1. Usa \`log_progreso\` para documentar tu análisis del bloqueante.
-2. Evalúa si el bloqueante es resoluble actualizando el plan (ej: credenciales SSH incorrectas → actualizarlas, comando que falló → corregir la sintaxis, pasos faltantes → agregarlos).
-3. Si es resoluble: usa \`actualizar_tarea\` con tarea_id="${tareaId}" para actualizar el \`plan_ejecucion\` o las \`notas\` con instrucciones corregidas. El agente será re-ejecutado por el superadmin con el plan actualizado.
-4. Si requiere intervención humana: documenta exactamente qué se necesita en \`log_progreso\`.
-5. **OBLIGATORIO**: Llama a \`notificar_usuario\` con un mensaje claro que explique al superadmin: qué agente se bloqueó, cuál es el problema, qué hiciste para resolverlo (o qué necesita hacer el usuario). El usuario NO ve la bitácora — solo ve este mensaje.
-6. Termina llamando a \`completar_tarea\` con un resumen de tu análisis y acción tomada.`;
+## Árbol de decisión — SIGUE ESTE ORDEN
+
+### A) Bloqueante TÉCNICO (comando fallido, dependencia, configuración, permisos, entorno):
+→ Analiza si otro agente puede resolverlo.
+→ Usa \`crear_subtarea\` para crear una tarea al agente adecuado (dev-devops si es infra, dev-backend si es API, etc.).
+→ Actualiza también el plan de la tarea bloqueada con \`actualizar_tarea\` si el plan original era incorrecto.
+→ Notifica al usuario con \`notificar_usuario\` explicando qué agente tomará el relevo.
+
+### B) Bloqueante OPERATIVO / DE NEGOCIO (dato de cliente, credencial de tercero, decisión de diseño, aprobación):
+→ NO puedes resolverlo solo. Necesitas input del stakeholder.
+→ Usa \`notificar_usuario\` con una PREGUNTA CONCRETA al stakeholder: qué información específica necesitas para continuar.
+→ Actualiza las notas de la tarea bloqueada con \`actualizar_tarea\` documentando qué se necesita.
+
+### C) Error transitorio (timeout, red caída, API temporal):
+→ Actualiza el plan de la tarea bloqueada con \`actualizar_tarea\` añadiendo instrucciones de reintento.
+→ Notifica al usuario que puede reanudar la tarea.
+
+## Instrucciones
+1. Usa \`log_progreso\` para documentar tu diagnóstico.
+2. Aplica la opción A, B o C del árbol de decisión.
+3. **OBLIGATORIO**: Llama a \`notificar_usuario\` con un mensaje que explique: agente bloqueado, problema, acción tomada y próximos pasos.
+4. Termina con \`completar_tarea\`.`;
 
       const insertResult = await db.from('tareas').insert({
         agente_asignado: pmResponsable,
@@ -434,6 +485,36 @@ ${planOriginal}
       tarea_id: tareaId,
     });
     return { resultado: JSON.stringify({ ok: true, actualizados: camposActualizados }), terminar: false };
+  }
+
+  if (nombre === 'crear_subtarea') {
+    const { agente_asignado, descripcion, plan_ejecucion, proyecto_id } = input as {
+      agente_asignado: string; descripcion: string; plan_ejecucion: string; proyecto_id?: string;
+    };
+    const { data, error } = await db.from('tareas').insert({
+      agente_asignado,
+      descripcion,
+      plan_ejecucion: plan_ejecucion ?? null,
+      proyecto_id: proyecto_id ?? null,
+      estado: 'pendiente',
+    }).select('id').single();
+
+    if (error) return { resultado: JSON.stringify({ error: error.message }), terminar: false };
+
+    await Promise.all([
+      db.from('bitacora_actividad').insert({
+        agente,
+        accion: `📋 Subtarea delegada a ${agente_asignado}: ${descripcion.slice(0, 120)}`,
+        tarea_id: tareaId,
+      }),
+      db.from('avatares').update({ estado_animacion: 'caminando' }).eq('agente_nombre', agente_asignado),
+    ]);
+
+    ejecutarEspecialista(data.id, db).catch((e: unknown) => {
+      console.error('[crear_subtarea] especialista error:', e);
+    });
+
+    return { resultado: JSON.stringify({ ok: true, subtarea_id: data.id }), terminar: false };
   }
 
   if (nombre === 'ejecutar_ssh') {

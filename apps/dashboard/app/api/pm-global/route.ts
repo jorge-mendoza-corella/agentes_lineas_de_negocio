@@ -291,6 +291,11 @@ async function ejecutarTool(
         ]);
         // Disparar ejecución del especialista en background (sin await — el PM responde al usuario ya)
         if (data?.id) {
+          // PM Global camina al área de trabajo mientras entrega la tarea
+          await db.from('avatares').update({ estado_animacion: 'caminando' }).eq('agente_nombre', 'pm-global');
+          setTimeout(async () => {
+            try { await db.from('avatares').update({ estado_animacion: 'trabajando' }).eq('agente_nombre', 'pm-global'); } catch {}
+          }, 1800);
           ejecutarEspecialista(data.id, db).catch(e =>
             console.error(`[crear_tarea] especialista ${agente_asignado} error:`, e)
           );
@@ -475,6 +480,9 @@ export async function POST(req: NextRequest) {
   }
   if (!convId) return new Response(JSON.stringify({ type: 'error', message: 'Error creando conversación en DB' }), { status: 500 });
   const conversacionId = convId;
+
+  // Auto-animar PM Global al recibir la solicitud (no depende de que el AI lo recuerde)
+  await db.from('avatares').update({ estado_animacion: 'trabajando' }).eq('agente_nombre', 'pm-global');
 
   // Guardar mensaje con referencia a adjuntos cuando no hay texto
   const contenidoGuardado = mensajeTexto
@@ -710,6 +718,10 @@ export async function POST(req: NextRequest) {
         await db.from('conversaciones_pm').update({ updated_at: new Date().toISOString() }).eq('id', conversacionId);
 
         send({ type: 'done', conversacion_id: conversacionId, mensaje_id: msg?.id, modelo: modeloUsado });
+        // PM Global regresa al lounge al terminar
+        setTimeout(async () => {
+          try { await db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', 'pm-global'); } catch {}
+        }, 2500);
       } catch (e) {
         console.error('[pm-global] stream error:', e);
         send({ type: 'error', message: e instanceof Error ? e.message : String(e) });

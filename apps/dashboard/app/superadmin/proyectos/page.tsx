@@ -8,30 +8,44 @@ const BADGE_ESTADO: Record<string, string> = {
   cerrado: 'bg-gray-100 text-gray-500',
 };
 
+type AreaRow    = { id: string; nombre: string; pm_agente: string; es_servicio: boolean };
+type EmpresaRow = { id: string; nombre: string };
+type ProyectoRow = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  estado: string;
+  creado_en: string;
+  empresa_id: string | null;
+  areas_negocio: { nombre: string } | null;
+  requerimientos: { id: string; estado: string }[];
+};
+
 export default async function ProyectosPage() {
   const supabase = await createClient();
 
-  const [{ data: areas }, { data: proyectos }] = await Promise.all([
+  const [areasRes, empresasRes, proyectosRes] = await Promise.all([
     supabase.from('areas_negocio').select('id, nombre, pm_agente, es_servicio').order('nombre'),
+    supabase.from('empresas').select('id, nombre').eq('activa', true).order('nombre'),
     supabase
       .from('proyectos')
-      .select(`
-        id, nombre, descripcion, estado, creado_en,
-        areas_negocio ( nombre ),
-        requerimientos ( id, estado )
-      `)
+      .select('id, nombre, descripcion, estado, creado_en, empresa_id, areas_negocio ( nombre ), requerimientos ( id, estado )')
       .order('creado_en', { ascending: false }),
   ]);
 
-  const porArea = (areas ?? []).map(area => ({
+  const areas    = (areasRes.data ?? []) as AreaRow[];
+  const empresas = (empresasRes.data ?? []) as EmpresaRow[];
+  const proyectos = (proyectosRes.data ?? []) as unknown as ProyectoRow[];
+
+  const porArea = areas.map(area => ({
     ...area,
-    proyectos: (proyectos ?? []).filter(p =>
-      (p.areas_negocio as unknown as { nombre: string })?.nombre === area.nombre
-    ),
+    proyectos: proyectos.filter(p => p.areas_negocio?.nombre === area.nombre),
   }));
 
-  const total = proyectos?.length ?? 0;
-  const activos = proyectos?.filter(p => p.estado === 'activo').length ?? 0;
+  const sinArea = proyectos.filter(p => !p.areas_negocio);
+
+  const total   = proyectos.length;
+  const activos = proyectos.filter(p => p.estado === 'activo').length;
 
   return (
     <div className="space-y-8">
@@ -46,7 +60,7 @@ export default async function ProyectosPage() {
 
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-4">Nuevo proyecto</h2>
-        <FormNuevoProyecto areas={areas ?? []} />
+        <FormNuevoProyecto areas={areas} empresas={empresas} />
       </div>
 
       {porArea.filter(a => a.proyectos.length > 0).map(area => (
@@ -62,8 +76,9 @@ export default async function ProyectosPage() {
           </div>
           <div className="divide-y divide-gray-50">
             {area.proyectos.map(p => {
-              const reqs = (p.requerimientos as { id: string; estado: string }[]) ?? [];
+              const reqs = p.requerimientos ?? [];
               const completados = reqs.filter(r => r.estado === 'completado').length;
+              const empresaNombre = empresas.find(e => e.id === p.empresa_id)?.nombre;
               return (
                 <Link
                   key={p.id}
@@ -74,6 +89,9 @@ export default async function ProyectosPage() {
                     <p className="text-sm font-semibold text-gray-900">{p.nombre}</p>
                     {p.descripcion && (
                       <p className="text-xs text-gray-400 mt-0.5 truncate max-w-md">{p.descripcion}</p>
+                    )}
+                    {empresaNombre && (
+                      <p className="text-xs text-blue-500 mt-0.5">🏢 {empresaNombre}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -92,6 +110,47 @@ export default async function ProyectosPage() {
           </div>
         </div>
       ))}
+
+      {sinArea.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Sin área</span>
+            <span className="ml-auto text-xs text-gray-400">{sinArea.length} proyectos</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {sinArea.map(p => {
+              const reqs = p.requerimientos ?? [];
+              const completados = reqs.filter(r => r.estado === 'completado').length;
+              const empresaNombre = empresas.find(e => e.id === p.empresa_id)?.nombre;
+              return (
+                <Link
+                  key={p.id}
+                  href={`/superadmin/proyectos/${p.id}`}
+                  className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900">{p.nombre}</p>
+                    {p.descripcion && (
+                      <p className="text-xs text-gray-400 mt-0.5 truncate max-w-md">{p.descripcion}</p>
+                    )}
+                    {empresaNombre && (
+                      <p className="text-xs text-blue-500 mt-0.5">🏢 {empresaNombre}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {reqs.length > 0 && (
+                      <span className="text-xs text-gray-400">{completados}/{reqs.length} reqs</span>
+                    )}
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${BADGE_ESTADO[p.estado] ?? ''}`}>
+                      {p.estado}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {total === 0 && (
         <div className="text-center py-16 text-sm text-gray-400">

@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import type { ServicioEmpresa } from '@agentes/shared';
+import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { toggleModuloEmpresa } from '@/lib/actions/modulos';
 
-const TODOS_SERVICIOS: ServicioEmpresa[] = [
-  'desarrollo', 'finanzas', 'contabilidad', 'marketing',
-  'cobranza', 'escrituracion', 'postventa', 'rrhh',
-];
+interface Modulo { id: string; nombre: string; icono: string | null }
+interface ModuloActivo { id: string; modulo_id: string; activo: boolean }
+interface ModuloServicio { modulo_id: string; servicio_id: string }
 
 interface Props {
   empresa: {
@@ -17,7 +16,9 @@ interface Props {
     descripcion: string | null;
     activa: boolean;
   };
-  servicios: { id: string; servicio: string; activo: boolean }[];
+  modulos: Modulo[];
+  modulosActivos: ModuloActivo[];
+  moduloServicios: ModuloServicio[];
   usuarios: {
     id: string;
     nombre: string;
@@ -27,32 +28,29 @@ interface Props {
   }[];
 }
 
-export default function GestionEmpresa({ empresa, servicios, usuarios }: Props) {
-  const supabase = createClient();
+export default function GestionEmpresa({
+  empresa, modulos, modulosActivos, moduloServicios, usuarios,
+}: Props) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [activando, setActivando] = useState<string | null>(null);
 
-  const serviciosActivos = new Set(
-    servicios.filter(s => s.activo).map(s => s.servicio)
+  const modulosActivosSet = new Set(
+    modulosActivos.filter(m => m.activo).map(m => m.modulo_id)
   );
 
-  async function toggleServicio(servicio: ServicioEmpresa) {
-    setActivando(servicio);
-    const existente = servicios.find(s => s.servicio === servicio);
+  function handleToggle(moduloId: string) {
+    const activar = !modulosActivosSet.has(moduloId);
+    const servicioIds = moduloServicios
+      .filter(ms => ms.modulo_id === moduloId)
+      .map(ms => ms.servicio_id);
 
-    if (existente) {
-      await supabase
-        .from('empresa_servicios')
-        .update({ activo: !existente.activo })
-        .eq('id', existente.id);
-    } else {
-      await supabase.from('empresa_servicios').insert({
-        empresa_id: empresa.id,
-        servicio,
-        activo: true,
-      });
-    }
-    setActivando(null);
-    window.location.reload();
+    setActivando(moduloId);
+    startTransition(async () => {
+      await toggleModuloEmpresa(empresa.id, moduloId, activar, servicioIds);
+      setActivando(null);
+      router.refresh();
+    });
   }
 
   return (
@@ -72,17 +70,23 @@ export default function GestionEmpresa({ empresa, servicios, usuarios }: Props) 
         </span>
       </div>
 
-      {/* Servicios contratados */}
+      {/* Módulos habilitados */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
-        <h2 className="text-base font-semibold text-gray-900 mb-4">Servicios contratados</h2>
+        <h2 className="text-base font-semibold text-gray-900 mb-1">Módulos habilitados</h2>
+        <p className="text-xs text-gray-400 mb-4">
+          Acceso a áreas de la plataforma.{' '}
+          <a href="/superadmin/modulos" className="text-blue-500 hover:underline">Configurar módulos →</a>
+        </p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {TODOS_SERVICIOS.map(s => {
-            const activo = serviciosActivos.has(s);
+          {modulos.map(m => {
+            const activo = modulosActivosSet.has(m.id);
+            const cargando = activando === m.id && isPending;
+            const serviciosCount = moduloServicios.filter(ms => ms.modulo_id === m.id).length;
             return (
               <button
-                key={s}
-                onClick={() => toggleServicio(s)}
-                disabled={activando === s}
+                key={m.id}
+                onClick={() => handleToggle(m.id)}
+                disabled={cargando}
                 className={`p-3 rounded-xl border-2 text-sm font-medium text-left transition-all capitalize ${
                   activo
                     ? 'border-blue-400 bg-blue-50 text-blue-800'
@@ -90,13 +94,27 @@ export default function GestionEmpresa({ empresa, servicios, usuarios }: Props) 
                 } disabled:opacity-50`}
               >
                 <span className="block text-lg mb-1">
-                  {activo ? '✅' : '⬜'}
+                  {cargando ? '⏳' : activo ? '✅' : (m.icono ?? '⬜')}
                 </span>
-                {s}
+                <span className="block">{m.nombre}</span>
+                {serviciosCount > 0 && (
+                  <span className="block text-[10px] mt-0.5 opacity-60">
+                    {serviciosCount} servicio{serviciosCount !== 1 ? 's' : ''}
+                  </span>
+                )}
               </button>
             );
           })}
+          {modulos.length === 0 && (
+            <p className="col-span-4 text-sm text-gray-400 italic">
+              No hay módulos configurados.{' '}
+              <a href="/superadmin/modulos" className="text-blue-500 hover:underline">Crear módulos →</a>
+            </p>
+          )}
         </div>
+        <p className="text-xs text-gray-400 mt-3">
+          Al habilitar un módulo, sus servicios se activan automáticamente para cotizaciones.
+        </p>
       </div>
 
       {/* Usuarios */}

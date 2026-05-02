@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
@@ -9,33 +9,41 @@ export default function LoginPage() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
 
-  const supabase = createClient();
+  // Evitar recrear el cliente en cada render (problema con React StrictMode)
+  const supabase = useMemo(() => createClient(), []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setCargando(true);
     setError('');
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
 
-    if (error) {
-      setError('No se pudo enviar el enlace. Verifica tu email.');
-    } else {
-      setEnviado(true);
+      if (error) {
+        setError('No se pudo enviar el enlace. Verifica tu email.');
+      } else {
+        setEnviado(true);
+      }
+    } catch (err) {
+      // TypeError: Failed to fetch — error de red o Supabase no disponible
+      console.error('[login] signInWithOtp error:', err);
+      setError('Error de conexión. Verifica tu red e intenta de nuevo.');
+    } finally {
+      setCargando(false);
     }
-    setCargando(false);
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Área de Sistemas</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Servicios Agénticos</h1>
           <p className="mt-2 text-sm text-gray-500">Accede con tu email corporativo</p>
         </div>
 

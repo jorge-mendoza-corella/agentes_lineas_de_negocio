@@ -10,14 +10,23 @@ export default async function EmpresaDetallePage({ params }: Props) {
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: empresa }, { data: servicios }, { data: usuarios }] = await Promise.all([
+  type ModuloRow = { id: string; nombre: string; icono: string | null };
+  type ModuloActivoRow = { id: string; modulo_id: string; activo: boolean };
+  type ModuloServicioRow = { modulo_id: string; servicio_id: string };
+
+  const [
+    { data: empresa },
+    { data: modulosActivos },
+    { data: todosModulos },
+    { data: usuarios },
+    moduloServiciosRes,
+  ] = await Promise.all([
     supabase.from('empresas').select('*').eq('id', id).single(),
-    supabase.from('empresa_servicios').select('*').eq('empresa_id', id),
-    supabase
-      .from('perfiles')
-      .select('*, stakeholder_areas(area)')
-      .eq('empresa_id', id)
-      .order('rol'),
+    supabase.from('empresa_servicios').select('id, modulo_id, activo').eq('empresa_id', id),
+    supabase.from('catalogo_modulos').select('id, nombre, icono').eq('activo', true).order('orden'),
+    supabase.from('perfiles').select('*, stakeholder_areas(area)').eq('empresa_id', id).order('rol'),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).from('modulo_servicios').select('modulo_id, servicio_id'),
   ]);
 
   if (!empresa) notFound();
@@ -30,7 +39,13 @@ export default async function EmpresaDetallePage({ params }: Props) {
         </a>
       </div>
 
-      <GestionEmpresa empresa={empresa} servicios={servicios ?? []} usuarios={usuarios ?? []} />
+      <GestionEmpresa
+        empresa={empresa}
+        modulos={(todosModulos ?? []) as ModuloRow[]}
+        modulosActivos={(modulosActivos ?? []) as ModuloActivoRow[]}
+        moduloServicios={(moduloServiciosRes.data ?? []) as ModuloServicioRow[]}
+        usuarios={usuarios ?? []}
+      />
     </div>
   );
 }

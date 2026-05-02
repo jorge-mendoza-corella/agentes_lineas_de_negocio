@@ -8,20 +8,25 @@ export default async function AprobacionesPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: perfil } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = supabase as any;
+
+  const { data: perfil } = await sb
     .from('perfiles')
     .select('nombre, rol')
     .eq('id', user.id)
-    .single();
+    .single() as { data: { nombre: string; rol: string } | null };
 
   // Superadmin y plataforma_admin acceden desde su propia ruta
   if (perfil?.rol === 'superadmin' || perfil?.rol === 'plataforma_admin') redirect('/superadmin');
 
-  const { data: solicitudes } = await supabase
+  const { data: solicitudes } = await sb
     .from('solicitudes_aprobacion')
     .select('*')
     .eq('stakeholder_id', user.id)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false }) as {
+      data: { id: string; estado: string; titulo: string; descripcion: string; area: string; plan_detallado: Record<string, unknown>; created_at: string }[] | null
+    };
 
   const pendientes = solicitudes?.filter((s) => s.estado === 'pendiente') ?? [];
   const historial = solicitudes?.filter((s) => s.estado !== 'pendiente') ?? [];

@@ -2,6 +2,9 @@
 .env
 .env.local
 .env.*.local
+# MCP con credenciales reales (no commitear — usar .mcp.example.json como template)
+.mcp.json
+.mcp.local.json
 # Configuración local de Claude Code (no compartir settings personales)
 .claude/settings.local.json
 .claude/settings.json
@@ -30,6 +33,12 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Playwright MCP — logs y snapshots temporales de sesiones
+.playwright-mcp/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
 
 # Documentos de salida de los agentes generada (no subir archivos pesados)
 salida/*

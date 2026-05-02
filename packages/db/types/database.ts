@@ -7,9 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   public: {
     Tables: {
       agentes: {
@@ -237,27 +234,296 @@ export type Database = {
           },
         ]
       }
+      conversaciones_pm: {
+        Row: {
+          created_at: string
+          empresa_id: string | null
+          id: string
+          proyecto_id: string | null
+          titulo: string | null
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          empresa_id?: string | null
+          id?: string
+          proyecto_id?: string | null
+          titulo?: string | null
+          updated_at?: string
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string | null
+          id?: string
+          proyecto_id?: string | null
+          titulo?: string | null
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversaciones_pm_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversaciones_pm_proyecto_id_fkey"
+            columns: ["proyecto_id"]
+            isOneToOne: false
+            referencedRelation: "proyectos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversaciones_pm_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cotizacion_lineas: {
+        Row: {
+          agente_nombre: string
+          cotizacion_id: string
+          created_at: string
+          descripcion: string
+          horas: number
+          id: string
+          orden: number
+          precio_hora: number
+          subtotal: number | null
+          tarea_id: string | null
+        }
+        Insert: {
+          agente_nombre: string
+          cotizacion_id: string
+          created_at?: string
+          descripcion: string
+          horas?: number
+          id?: string
+          orden?: number
+          precio_hora?: number
+          subtotal?: number | null
+          tarea_id?: string | null
+        }
+        Update: {
+          agente_nombre?: string
+          cotizacion_id?: string
+          created_at?: string
+          descripcion?: string
+          horas?: number
+          id?: string
+          orden?: number
+          precio_hora?: number
+          subtotal?: number | null
+          tarea_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizacion_lineas_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizacion_lineas_tarea_id_fkey"
+            columns: ["tarea_id"]
+            isOneToOne: false
+            referencedRelation: "tareas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cotizaciones: {
+        Row: {
+          created_at: string
+          descuento_pct: number
+          empresa_id: string | null
+          estado: string
+          folio: string | null
+          generada_por: string | null
+          id: string
+          moneda: string
+          notas: string | null
+          proyecto_id: string | null
+          subtotal: number
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          descuento_pct?: number
+          empresa_id?: string | null
+          estado?: string
+          folio?: string | null
+          generada_por?: string | null
+          id?: string
+          moneda?: string
+          notas?: string | null
+          proyecto_id?: string | null
+          subtotal?: number
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          descuento_pct?: number
+          empresa_id?: string | null
+          estado?: string
+          folio?: string | null
+          generada_por?: string | null
+          id?: string
+          moneda?: string
+          notas?: string | null
+          proyecto_id?: string | null
+          subtotal?: number
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_generada_por_fkey"
+            columns: ["generada_por"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_proyecto_id_fkey"
+            columns: ["proyecto_id"]
+            isOneToOne: false
+            referencedRelation: "proyectos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empresa_agente_tarifas: {
+        Row: {
+          agente_nombre: string
+          empresa_id: string
+          tarifa_hora: number
+        }
+        Insert: {
+          agente_nombre: string
+          empresa_id: string
+          tarifa_hora: number
+        }
+        Update: {
+          agente_nombre?: string
+          empresa_id?: string
+          tarifa_hora?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empresa_agente_tarifas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empresa_contratos: {
+        Row: {
+          activo: boolean | null
+          creado_en: string | null
+          empresa_id: string
+          id: string
+          servicio_id: string
+        }
+        Insert: {
+          activo?: boolean | null
+          creado_en?: string | null
+          empresa_id: string
+          id?: string
+          servicio_id: string
+        }
+        Update: {
+          activo?: boolean | null
+          creado_en?: string | null
+          empresa_id?: string
+          id?: string
+          servicio_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empresa_contratos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empresa_contratos_servicio_id_fkey"
+            columns: ["servicio_id"]
+            isOneToOne: false
+            referencedRelation: "servicios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalogo_modulos: {
+        Row: {
+          id: string
+          nombre: string
+          descripcion: string | null
+          icono: string | null
+          activo: boolean
+          orden: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          nombre: string
+          descripcion?: string | null
+          icono?: string | null
+          activo?: boolean
+          orden?: number
+          creado_en?: string
+        }
+        Update: {
+          nombre?: string
+          descripcion?: string | null
+          icono?: string | null
+          activo?: boolean
+          orden?: number
+        }
+        Relationships: []
+      }
       empresa_servicios: {
         Row: {
           activo: boolean
           created_at: string
           empresa_id: string
           id: string
-          servicio: string
+          modulo_id: string
         }
         Insert: {
           activo?: boolean
           created_at?: string
           empresa_id: string
           id?: string
-          servicio: string
+          modulo_id: string
         }
         Update: {
           activo?: boolean
           created_at?: string
           empresa_id?: string
           id?: string
-          servicio?: string
+          modulo_id?: string
         }
         Relationships: [
           {
@@ -265,6 +531,43 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empresa_servicios_modulo_id_fkey"
+            columns: ["modulo_id"]
+            isOneToOne: false
+            referencedRelation: "catalogo_modulos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      modulo_servicios: {
+        Row: {
+          modulo_id: string
+          servicio_id: string
+        }
+        Insert: {
+          modulo_id: string
+          servicio_id: string
+        }
+        Update: {
+          modulo_id?: string
+          servicio_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modulo_servicios_modulo_id_fkey"
+            columns: ["modulo_id"]
+            isOneToOne: false
+            referencedRelation: "catalogo_modulos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "modulo_servicios_servicio_id_fkey"
+            columns: ["servicio_id"]
+            isOneToOne: false
+            referencedRelation: "servicios"
             referencedColumns: ["id"]
           },
         ]
@@ -296,6 +599,33 @@ export type Database = {
           nombre?: string
           slug?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      mensajes_pm: {
+        Row: {
+          contenido: string
+          conversacion_id: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          rol: string
+        }
+        Insert: {
+          contenido: string
+          conversacion_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          rol: string
+        }
+        Update: {
+          contenido?: string
+          conversacion_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          rol?: string
         }
         Relationships: []
       }
@@ -490,9 +820,10 @@ export type Database = {
       proyectos: {
         Row: {
           actualizado_en: string
-          area_negocio_id: string
+          area_negocio_id: string | null
           creado_en: string
           descripcion: string | null
+          empresa_id: string | null
           estado: string
           id: string
           nombre: string
@@ -502,9 +833,10 @@ export type Database = {
         }
         Insert: {
           actualizado_en?: string
-          area_negocio_id: string
+          area_negocio_id?: string | null
           creado_en?: string
           descripcion?: string | null
+          empresa_id?: string | null
           estado?: string
           id?: string
           nombre: string
@@ -514,9 +846,10 @@ export type Database = {
         }
         Update: {
           actualizado_en?: string
-          area_negocio_id?: string
+          area_negocio_id?: string | null
           creado_en?: string
           descripcion?: string | null
+          empresa_id?: string | null
           estado?: string
           id?: string
           nombre?: string
@@ -530,6 +863,13 @@ export type Database = {
             columns: ["area_negocio_id"]
             isOneToOne: false
             referencedRelation: "areas_negocio"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proyectos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
           {
@@ -591,6 +931,59 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      servicio_agentes: {
+        Row: {
+          agente_nombre: string
+          servicio_id: string
+          tarifa_hora: number | null
+        }
+        Insert: {
+          agente_nombre: string
+          servicio_id: string
+          tarifa_hora?: number | null
+        }
+        Update: {
+          agente_nombre?: string
+          servicio_id?: string
+          tarifa_hora?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "servicio_agentes_servicio_id_fkey"
+            columns: ["servicio_id"]
+            isOneToOne: false
+            referencedRelation: "servicios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      servicios: {
+        Row: {
+          activo: boolean | null
+          creado_en: string | null
+          descripcion: string | null
+          icono: string | null
+          id: string
+          nombre: string
+        }
+        Insert: {
+          activo?: boolean | null
+          creado_en?: string | null
+          descripcion?: string | null
+          icono?: string | null
+          id?: string
+          nombre: string
+        }
+        Update: {
+          activo?: boolean | null
+          creado_en?: string | null
+          descripcion?: string | null
+          icono?: string | null
+          id?: string
+          nombre?: string
+        }
+        Relationships: []
       }
       solicitudes_aprobacion: {
         Row: {
@@ -711,8 +1104,11 @@ export type Database = {
           estado: string
           id: string
           iniciado_en: string | null
+          notas: string | null
+          plan_ejecucion: string | null
+          proyecto_id: string | null
           rama: string | null
-          requerimiento_id: string
+          requerimiento_id: string | null
         }
         Insert: {
           agente_asignado: string
@@ -722,8 +1118,11 @@ export type Database = {
           estado?: string
           id?: string
           iniciado_en?: string | null
+          notas?: string | null
+          plan_ejecucion?: string | null
+          proyecto_id?: string | null
           rama?: string | null
-          requerimiento_id: string
+          requerimiento_id?: string | null
         }
         Update: {
           agente_asignado?: string
@@ -733,8 +1132,11 @@ export type Database = {
           estado?: string
           id?: string
           iniciado_en?: string | null
+          notas?: string | null
+          plan_ejecucion?: string | null
+          proyecto_id?: string | null
           rama?: string | null
-          requerimiento_id?: string
+          requerimiento_id?: string | null
         }
         Relationships: [
           {
@@ -745,6 +1147,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tarifas_agentes: {
+        Row: {
+          activo: boolean
+          actualizado_en: string
+          agente_nombre: string
+          area: string
+          creado_en: string
+          display_name: string
+          id: string
+          moneda: string
+          tarifa_hora: number
+        }
+        Insert: {
+          activo?: boolean
+          actualizado_en?: string
+          agente_nombre: string
+          area?: string
+          creado_en?: string
+          display_name: string
+          id?: string
+          moneda?: string
+          tarifa_hora?: number
+        }
+        Update: {
+          activo?: boolean
+          actualizado_en?: string
+          agente_nombre?: string
+          area?: string
+          creado_en?: string
+          display_name?: string
+          id?: string
+          moneda?: string
+          tarifa_hora?: number
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -765,6 +1203,7 @@ export type Database = {
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
@@ -844,6 +1283,40 @@ export type TablesUpdate<
       }
       ? U
       : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {

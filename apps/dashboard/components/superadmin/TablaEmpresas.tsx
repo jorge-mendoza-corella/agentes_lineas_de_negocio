@@ -1,5 +1,13 @@
 import Link from 'next/link';
 
+interface ModuloInfo { nombre: string; icono: string | null }
+
+interface EmpresaServicioRow {
+  modulo_id: string;
+  activo: boolean;
+  catalogo_modulos: ModuloInfo | null;
+}
+
 interface Empresa {
   id: string;
   nombre: string;
@@ -7,7 +15,7 @@ interface Empresa {
   descripcion: string | null;
   activa: boolean;
   created_at: string;
-  empresa_servicios: { servicio: string; activo: boolean }[];
+  empresa_servicios: EmpresaServicioRow[];
 }
 
 interface Props {
@@ -44,13 +52,14 @@ export default function TablaEmpresas({ empresas }: Props) {
             </div>
             <div className="flex flex-wrap gap-1 justify-end">
               {e.empresa_servicios
-                .filter(s => s.activo)
+                .filter(s => s.activo && s.catalogo_modulos)
                 .map(s => (
                   <span
-                    key={s.servicio}
+                    key={s.modulo_id}
                     className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full capitalize"
                   >
-                    {s.servicio}
+                    {s.catalogo_modulos!.icono && `${s.catalogo_modulos!.icono} `}
+                    {s.catalogo_modulos!.nombre}
                   </span>
                 ))}
             </div>

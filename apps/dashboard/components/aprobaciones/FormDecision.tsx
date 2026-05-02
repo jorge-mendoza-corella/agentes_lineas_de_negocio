@@ -25,7 +25,9 @@ export default function FormDecision({ solicitudId }: Props) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { error } = await supabase.from('aprobaciones').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    const { error } = await sb.from('aprobaciones').insert({
       solicitud_id: solicitudId,
       stakeholder_id: user.id,
       decision,
@@ -33,7 +35,7 @@ export default function FormDecision({ solicitudId }: Props) {
     });
 
     if (!error) {
-      await supabase
+      await sb
         .from('solicitudes_aprobacion')
         .update({ estado: decision === 'solicitar_cambios' ? 'en_revision' : decision })
         .eq('id', solicitudId);

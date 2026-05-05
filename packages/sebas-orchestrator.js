@@ -8,19 +8,19 @@ const token = process.env.TELEGRAM_BOT_TOKEN_SEBAS || process.env.TELEGRAM_BOT_T
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
-const jorgeChatId = process.env.JORGE_CHAT_ID;
 
 if (!token) { console.error('[SEBAS] FATAL: TELEGRAM_BOT_TOKEN_SEBAS no configurado'); process.exit(1); }
 if (!anthropicKey) { console.error('[SEBAS] FATAL: ANTHROPIC_API_KEY no configurado'); process.exit(1); }
 
 const bot = new TelegramBot(token, { polling: true });
-const supabase = createClient(supabaseUrl || '', supabaseKey || '');
+const supabase = createClient(supabaseUrl, supabaseKey);
 const client = new Anthropic({ apiKey: anthropicKey });
 
 console.log('🎯 SEBAS PM Global iniciando...');
-console.log(`📱 Token: ${token ? token.slice(0, 10) + '...' : 'NO configurado ❌'}`);
-console.log(`🔗 Supabase: ${supabaseUrl ? 'configurado ✅' : 'NO configurado ❌'}`);
-console.log(`🧠 Anthropic: ${anthropicKey ? 'configurado ✅' : 'NO configurado ❌'}`);
+console.log(`📱 Token: ${token ? 'configurado ✅' : 'NO configurado ❌'}`);
+
+// Memoria temporal de conversaciones (en producción usar Supabase)
+const conversations = new Map();
 
 const AGENT_TYPES = [
   'dev-analista',
@@ -33,69 +33,104 @@ const AGENT_TYPES = [
   'dev-diseño',
 ];
 
-async function identifyRequiredAgents(request) {
+const SYSTEM_PROMPT = `Eres SEBAS, el PM Global del sistema de agentes de líneas de negocio.
+
+Tu rol es:
+1. Entender solicitudes de desarrollo/proyectos de empresas
+2. Ser conversacional y hacer preguntas clarificatorias si necesitas más contexto
+3. Identificar qué agentes especializados necesitas para completar la tarea
+4. Explicar tu estrategia de orquestación de forma clara y concisa
+5. Ser profesional pero cercano, como un verdadero PM
+
+Agentes disponibles:
+- dev-analista: Análisis de requisitos y especificaciones
+- dev-backend: APIs, lógica de servidor, bases de datos
+- dev-frontend: Interfaces de usuario, experiencia
+- dev-bd: Diseño y arquitectura de bases de datos
+- dev-testing: Testing, QA, aseguramiento de calidad
+- dev-devops: CI/CD, deployment, infraestructura
+- dev-documentador: Documentación técnica y arquitectura
+- dev-diseño: UI/UX, diseño visual
+
+Responde siempre en español. Sé conversacional, no robótico.`;
+
+async function processRequest(chatId, userMessage, userName) {
   try {
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 200,
-      system: `Eres un PM Global que identifica qué agentes especializados se necesitan.
+    // Obtener o crear historial de conversación
+    let history = conversations.get(chatId) || [];
 
-Agentes disponibles: dev-analista, dev-backend, dev-frontend, dev-bd, dev-testing, dev-devops, dev-documentador, dev-diseño
-
-Responde SOLO con una lista separada por comas, sin explicación. Ej: dev-analista, dev-backend`,
-      messages: [{ role: 'user', content: request }],
+    // Agregar mensaje del usuario
+    history.push({
+      role: 'user',
+      content: userMessage,
     });
 
-    const agentsText = message.content[0].text
-      .split(',')
-      .map((a) => a.trim())
-      .filter((a) => AGENT_TYPES.includes(a));
+    // Mantener últimos 10 mensajes
+    if (history.length > 10) {
+      history = history.slice(-10);
+    }
 
-    return agentsText.length > 0 ? agentsText : ['dev-analista'];
+    // Obtener respuesta de Claude
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: history,
+    });
+
+    const assistantMessage = response.content[0].text;
+
+    // Agregar respuesta de SEBAS al historial
+    history.push({
+      role: 'assistant',
+      content: assistantMessage,
+    });
+
+    // Guardar historial
+    conversations.set(chatId, history);
+
+    // Enviar respuesta
+    await bot.sendMessage(chatId, assistantMessage);
+
+    // Log en Supabase (opcional)
+    await supabase.from('sebas_messages')
+      .insert({
+        chat_id: chatId,
+        user_name: userName,
+        user_message: userMessage,
+        sebas_response: assistantMessage,
+        timestamp: new Date().toISOString(),
+      })
+      .catch(() => null);
   } catch (error) {
-    console.error('[SEBAS] Error Claude API:', error.message);
-    return ['dev-analista'];
+    console.error('[SEBAS] Error:', error.message);
+    await bot.sendMessage(
+      chatId,
+      'Disculpa, tuve un problema procesando tu solicitud. Intenta de nuevo.'
+    );
   }
 }
-
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
+  const userName = msg.from.first_name || msg.from.username || 'Usuario';
 
-  // Ignorar mensajes sin texto (stickers, fotos, etc.)
-  if (!text) return;
+  console.log(`[SEBAS] Mensaje de ${userName}: ${text}`);
 
-  const senderName = msg.from?.first_name || 'Usuario';
-  console.log(`[SEBAS] Mensaje de ${senderName} (${chatId}): ${text}`);
-
-  try {
-    const agents = await identifyRequiredAgents(text);
-    console.log(`[SEBAS] Agentes identificados: ${agents.join(', ')}`);
-
-    try {
-      const { error: dbError } = await supabase.from('sebas_messages').insert({
-        chat_id: chatId,
-        user_name: senderName,
-        message: text,
-        agents_identified: agents,
-        timestamp: new Date().toISOString(),
-      });
-      if (dbError) console.warn('[SEBAS] Supabase insert falló:', dbError.message);
-    } catch (e) {
-      console.warn('[SEBAS] Supabase insert falló:', e.message);
-    }
-
-    const response = `🎯 *SEBAS — PM Global*\n\n📋 Solicitud: "${text}"\n\n🔍 Agentes identificados:\n${agents.map((a) => `• ${a}`).join('\n')}\n\n⏳ Delegando tareas...`;
-
-    await bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
-  } catch (error) {
-    console.error('[SEBAS] Error en handler:', error.message, error.stack);
-    await bot.sendMessage(chatId, '❌ Error procesando tu solicitud').catch(() => null);
+  // Ignorar comandos que no sean texto
+  if (!text || text.startsWith('/')) {
+    return;
   }
+
+  // Mostrar que SEBAS está escribiendo
+  await bot.sendChatAction(chatId, 'typing');
+
+  // Procesar solicitud
+  await processRequest(chatId, text, userName);
 });
 
 bot.on('polling_error', (error) => {
   console.error('[SEBAS] Error de polling:', error.code, error.message);
 });
 
-console.log('✅ SEBAS PM Global listo');
+console.log('✅ SEBAS PM Global listo - conversacional y contextual');

@@ -44,6 +44,18 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY_PASSPHRASE: ${{ secrets.SSH_KEY_PASSPHRASE }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GOOGLE_GEMINI_API_KEY: ${{ secrets.GOOGLE_GEMINI_API_KEY }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          JORGE_CHAT_ID: ${{ secrets.JORGE_CHAT_ID }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN_SEBAS: ${{ secrets.TELEGRAM_BOT_TOKEN_SEBAS }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -e
           mkdir -p ~/.ssh
@@ -57,16 +69,12 @@ jobs:
 
           echo "🚀 Redeploying containers..."
           ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" << 'SSHEOF'
+          source /home/srvsozu/.openclaw/workspace/agentes_lineas_de_negocio/.env.docker
           cd /home/srvsozu/.openclaw/workspace/agentes_lineas_de_negocio
           echo "📂 Current directory: $(pwd)"
-          echo "📄 Checking .env.docker:"
-          ls -lh .env.docker
-          echo "---"
-          head -3 .env.docker
-          echo "---"
           echo "🛑 Stopping containers..."
           docker-compose down --remove-orphans || true
-          echo "🚀 Starting containers..."
+          echo "🚀 Starting containers with sourced env..."
           docker-compose up -d
           echo "✅ Deployment complete"
           docker-compose ps

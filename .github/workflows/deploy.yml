@@ -20,6 +20,9 @@ jobs:
             cd /opt/agentes_lineas_de_negocio
             git pull origin main
 
+            echo "NEXT_PUBLIC_SUPABASE_URL presente: ${#NEXT_PUBLIC_SUPABASE_URL} chars"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY presente: ${#NEXT_PUBLIC_SUPABASE_ANON_KEY} chars"
+
             # .env raíz — Docker Compose lo lee para sustituir las vars en docker-compose.yml
             cat > .env << EOF
             NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL

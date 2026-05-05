@@ -93,15 +93,17 @@ async function processRequest(chatId, userMessage, userName) {
     await bot.sendMessage(chatId, assistantMessage);
 
     // Log en Supabase (opcional)
-    await supabase.from('sebas_messages')
-      .insert({
+    try {
+      await supabase.from('sebas_messages').insert({
         chat_id: chatId,
         user_name: userName,
         user_message: userMessage,
         sebas_response: assistantMessage,
         timestamp: new Date().toISOString(),
-      })
-      .catch(() => null);
+      });
+    } catch (dbError) {
+      console.warn('[SEBAS] Error guardando en Supabase:', dbError.message);
+    }
   } catch (error) {
     console.error('[SEBAS] Error completo:', error);
     console.error('[SEBAS] Stack:', error instanceof Error ? error.stack : 'sin stack');

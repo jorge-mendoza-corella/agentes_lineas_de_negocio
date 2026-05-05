@@ -406,17 +406,36 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('Unauthorized', { status: 401 });
-
+  // Auth con timeout de 8 s — si Supabase no responde, el cliente recibe 504 en vez de colgar
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: perfil } = await (supabase as any)
-    .from('perfiles')
-    .select('rol,nombre')
-    .eq('id', user.id)
-    .single() as { data: { rol: string; nombre: string } | null };
-
+  let supabase: any;
+  let user: { id: string } | null = null;
+  let perfil: { rol: string; nombre: string } | null = null;
+  try {
+    await Promise.race([
+      (async () => {
+        supabase = await createServerClient();
+        const { data: { user: u } } = await supabase.auth.getUser();
+        user = u as typeof user;
+        if (user) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data } = await (supabase as any)
+            .from('perfiles').select('rol,nombre').eq('id', user.id).single();
+          perfil = data as typeof perfil;
+        }
+      })(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Auth timeout: Supabase no respondió en 8 s')), 8_000)
+      ),
+    ]);
+  } catch (e) {
+    console.error('[pm-global] auth error:', e);
+    return new Response(
+      JSON.stringify({ type: 'error', message: e instanceof Error ? e.message : String(e) }),
+      { status: 504, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  if (!user) return new Response('Unauthorized', { status: 401 });
   if (!perfil || !['superadmin', 'plataforma_admin'].includes(perfil.rol)) {
     return new Response('Forbidden', { status: 403 });
   }

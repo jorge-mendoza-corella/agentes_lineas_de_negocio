@@ -215,7 +215,12 @@ export default function ChatPM({
   const abortRef = useRef<AbortController | null>(null);
 
   function cancelarStream() {
+    // Resetear estado inmediatamente en el UI (no esperar al abort)
+    setIsStreaming(false);
+    setMensajes(prev => prev.map(m => m.pendiente ? { ...m, pendiente: false } : m));
+    // Intentar cancelar el request subyacente (best-effort)
     abortRef.current?.abort('usuario');
+    abortRef.current = null;
   }
 
   useEffect(() => {

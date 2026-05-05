@@ -1,21 +1,17 @@
-FROM node:20-slim AS base
+FROM node:20-slim AS builder
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
-
-# --- deps: instalar dependencias del monorepo ---
-FROM base AS deps
 WORKDIR /app
+
+# Copiar manifests primero para cachear el pnpm install
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/dashboard/package.json ./apps/dashboard/
 COPY packages/db/package.json ./packages/db/
 COPY packages/shared/package.json ./packages/shared/
-RUN pnpm install --frozen-lockfile --shamefully-hoist
+RUN pnpm install --frozen-lockfile
 
-# --- builder: compilar Next.js ---
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Copiar código fuente y compilar
 COPY . .
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY

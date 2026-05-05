@@ -93,21 +93,25 @@ async function processRequest(chatId, userMessage, userName) {
     await bot.sendMessage(chatId, assistantMessage);
 
     // Log en Supabase (opcional)
-    await supabase.from('sebas_messages')
-      .insert({
+    try {
+      await supabase.from('sebas_messages').insert({
         chat_id: chatId,
         user_name: userName,
         user_message: userMessage,
         sebas_response: assistantMessage,
         timestamp: new Date().toISOString(),
-      })
-      .catch(() => null);
+      });
+    } catch (dbError) {
+      console.warn('[SEBAS] Error guardando en Supabase:', dbError.message);
+    }
   } catch (error) {
-    console.error('[SEBAS] Error:', error.message);
+    console.error('[SEBAS] Error completo:', error);
+    console.error('[SEBAS] Stack:', error instanceof Error ? error.stack : 'sin stack');
+    const errorMsg = error instanceof Error ? error.message : String(error);
     await bot.sendMessage(
       chatId,
-      'Disculpa, tuve un problema procesando tu solicitud. Intenta de nuevo.'
-    );
+      `Disculpa, tuve un problema: ${errorMsg.substring(0, 100)}`
+    ).catch(e => console.error('[SEBAS] Error al enviar mensaje de error:', e));
   }
 }
 bot.on('message', async (msg) => {

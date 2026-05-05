@@ -45,9 +45,13 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-          
+
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << 'SSHEOF'
+          mkdir -p ~/agentes_lineas_de_negocio
+          SSHEOF
+
           scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no .env.docker "$SSH_USER@$SSH_HOST:~/agentes_lineas_de_negocio/.env.docker"
-          
+
           ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << 'SSHEOF'
           cd ~/agentes_lineas_de_negocio
           docker-compose down

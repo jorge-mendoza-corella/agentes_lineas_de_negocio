@@ -24,14 +24,6 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL presente: ${#NEXT_PUBLIC_SUPABASE_URL} chars"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY presente: ${#NEXT_PUBLIC_SUPABASE_ANON_KEY} chars"
 
-            # .env raíz — Docker Compose lo lee para sustituir las vars en docker-compose.yml
-            cat > .env << EOF
-            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
-            NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-            EOF
-
-            # .env.local del dashboard — vars de runtime del servidor Next.js
             cat > apps/dashboard/.env.local << EOF
             NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
             NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY

@@ -1,0 +1,18 @@
+name: Verificar rama origen del PR
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  solo-desde-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar que el PR viene de dev
+        run: |
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "ERROR: Solo se permiten merges a main desde la rama 'dev'."
+            echo "Rama origen detectada: ${{ github.head_ref }}"
+            exit 1
+          fi
+          echo "OK: PR desde dev hacia main."

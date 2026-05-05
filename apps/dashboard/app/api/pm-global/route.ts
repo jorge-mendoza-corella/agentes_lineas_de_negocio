@@ -410,7 +410,8 @@ export async function POST(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let supabase: any;
   let user: { id: string } | null = null;
-  let perfil: { rol: string; nombre: string } | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let perfil: any = null;
   try {
     await Promise.race([
       (async () => {

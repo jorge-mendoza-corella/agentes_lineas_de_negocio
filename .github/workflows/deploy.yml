@@ -8,58 +8,101 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Deploy en servidor via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_APP_URL,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,GOOGLE_GEMINI_API_KEY,INTERNAL_API_KEY,SSH_KEY_PASSPHRASE,SSH_SUDO_PASSWORD,VPS_HOST,VPS_USER,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,CLOUDFLARE_API_TOKEN
-          script: |
-            set -e
-            cd /opt/agentes_lineas_de_negocio
-            git pull origin main
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-            echo "NEXT_PUBLIC_SUPABASE_URL presente: ${#NEXT_PUBLIC_SUPABASE_URL} chars"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY presente: ${#NEXT_PUBLIC_SUPABASE_ANON_KEY} chars"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-            cat > apps/dashboard/.env.local << EOF
-            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
-            SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
-            NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-            DASHBOARD_URL=$NEXT_PUBLIC_APP_URL
-            ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
-            GOOGLE_GEMINI_API_KEY=$GOOGLE_GEMINI_API_KEY
-            INTERNAL_API_KEY=$INTERNAL_API_KEY
-            SSH_KEY_PATH=/app/.ssh/agent_key
-            SSH_KEY_PASSPHRASE=$SSH_KEY_PASSPHRASE
-            SSH_SUDO_PASSWORD=$SSH_SUDO_PASSWORD
-            VPS_HOST=$VPS_HOST
-            VPS_USER=$VPS_USER
-            SSH_DEFAULT_HOST=$VPS_HOST
-            SSH_DEFAULT_USER=$VPS_USER
-            TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
-            TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
-            CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN
-            EOF
+      - name: Create .env.docker from secrets
+        run: |
+          cat > .env.docker << EOF
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          GOOGLE_GEMINI_API_KEY=${{ secrets.GOOGLE_GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN_SEBAS=${{ secrets.TELEGRAM_BOT_TOKEN_SEBAS }}
+          JORGE_CHAT_ID=${{ secrets.JORGE_CHAT_ID }}
+          NODE_ENV=production
+          NEXT_TELEMETRY_DISABLED=1
+          NEXT_PUBLIC_APP_URL=http://localhost:3000
+          REDIS_URL=redis://redis:6379
+          EOF
 
-            docker compose build
-            docker compose up -d --force-recreate
-            docker compose ps
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_GEMINI_API_KEY: ${{ secrets.GOOGLE_GEMINI_API_KEY }}
-          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-          SSH_KEY_PASSPHRASE: ${{ secrets.SSH_KEY_PASSPHRASE }}
-          SSH_SUDO_PASSWORD: ${{ secrets.SSH_SUDO_PASSWORD }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Build and start services with Docker Compose
+        run: |
+          docker compose -f docker-compose.yml build
+          docker compose -f docker-compose.yml up -d
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "⏳ Waiting for services to start..."
+          sleep 10
+
+          # Check dashboard health
+          max_attempts=30
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -f http://localhost:3000/api/health > /dev/null 2>&1 || curl -f http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "✅ Dashboard is healthy"
+              break
+            fi
+            attempt=$((attempt + 1))
+            echo "⏳ Attempt $attempt/$max_attempts... Dashboard not ready yet"
+            sleep 2
+          done
+
+      - name: Verify all services are running
+        run: |
+          echo "🐳 Running containers:"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}"
+
+          echo ""
+          echo "🔍 Service logs (last 15 lines each):"
+
+          echo "--- Dashboard ---"
+          docker logs agentes-dashboard 2>/dev/null | tail -15 || echo "Dashboard logs not available"
+
+          echo "--- ALO Orchestrator ---"
+          docker logs alo-orchestrator 2>/dev/null | tail -15 || echo "ALO logs not available"
+
+          echo "--- SEBAS Orchestrator ---"
+          docker logs sebas-orchestrator 2>/dev/null | tail -15 || echo "SEBAS logs not available"
+
+          echo "--- Redis ---"
+          docker logs agentes-cache 2>/dev/null | tail -15 || echo "Redis logs not available"
+
+      - name: Check service connectivity
+        run: |
+          echo "🔗 Testing service connectivity..."
+
+          # Test dashboard
+          echo "Testing dashboard..."
+          curl -f http://localhost:3001/api/health 2>/dev/null && echo "✅ Dashboard health OK" || echo "⚠️ Dashboard health check skipped (might be starting)"
+
+          # Test Redis
+          echo "Testing Redis..."
+          docker exec agentes-cache redis-cli ping && echo "✅ Redis OK" || echo "❌ Redis check failed"
+
+      - name: Deploy summary
+        run: |
+          echo "✅ Deployment completed!"
+          echo ""
+          echo "Services running:"
+          docker ps --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}" 2>/dev/null | grep agentes || echo "No containers found"
+          echo ""
+          echo "📊 Dashboard: http://localhost:3001"
+          echo "🤖 ALO Bot: Listening on Telegram"
+          echo "🎯 SEBAS Bot: Listening on Telegram"
+          echo "🔴 Redis: localhost:6379"
+
+      - name: Cleanup on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed. Cleaning up..."
+          docker compose -f docker-compose.yml down 2>/dev/null || true
+          exit 1

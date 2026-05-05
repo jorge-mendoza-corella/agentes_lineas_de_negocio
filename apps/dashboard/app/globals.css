@@ -155,8 +155,8 @@
 }
 .sims-badge-bounce { animation: sims-badge-bounce-kf 1.4s ease-in-out infinite; }
 
-/* ── SSH pending — borde giratorio ── */
-@keyframes ssh-spin-kf { to { transform: rotate(360deg); } }
+/* ── SSH pending — borde punteado giratorio ── */
+@keyframes borderRotate { to { transform: rotate(360deg); } }
 
 .ssh-pending-wrap {
   position: relative;
@@ -169,7 +169,7 @@
   inset: -2px;
   border-radius: 10px;
   background: conic-gradient(from 0deg, #3b82f6 0deg, #60a5fa 60deg, transparent 120deg, transparent 240deg, #818cf8 300deg, #3b82f6 360deg);
-  animation: ssh-spin-kf 1.6s linear infinite;
+  animation: borderRotate 1.6s linear infinite;
   z-index: -1;
 }
 .ssh-pending-wrap::after {

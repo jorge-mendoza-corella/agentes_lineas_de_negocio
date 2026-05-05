@@ -155,15 +155,9 @@
 }
 .sims-badge-bounce { animation: sims-badge-bounce-kf 1.4s ease-in-out infinite; }
 
-/* ── SSH pending — borde punteado giratorio ── */
-@keyframes dashMove {
-  0%   { stroke-dashoffset: 0; }
-  100% { stroke-dashoffset: 20; }
-}
-
-@keyframes borderSpin {
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+/* ── SSH pending — borde punteado "marching ants" ── */
+@keyframes ssh-marching {
+  to { background-position: 8px 0, -8px 100%, 0 -8px, 100% 8px; }
 }
 
 .ssh-pending-wrap {
@@ -174,9 +168,13 @@
 .ssh-pending-border {
   position: absolute;
   inset: 0;
-  border: 2px dashed #ef4444;
   border-radius: 8px;
   pointer-events: none;
-  animation: borderSpin 2s linear infinite;
-  opacity: 0.8;
+  z-index: 10;
+  background:
+    linear-gradient(90deg, #3b82f6 50%, transparent 50%) top    / 8px 1.5px repeat-x,
+    linear-gradient(90deg, #3b82f6 50%, transparent 50%) bottom / 8px 1.5px repeat-x,
+    linear-gradient(0deg,  #3b82f6 50%, transparent 50%) left   / 1.5px 8px repeat-y,
+    linear-gradient(0deg,  #3b82f6 50%, transparent 50%) right  / 1.5px 8px repeat-y;
+  animation: ssh-marching 0.45s linear infinite;
 }

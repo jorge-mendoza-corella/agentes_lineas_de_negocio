@@ -23,12 +23,17 @@ bot.on('message', async (msg) => {
 
   try {
     // Log en Supabase
-    await supabase.from('alo_messages').insert({
-      chat_id: chatId,
-      user_name: msg.from.first_name,
-      message: text,
-      timestamp: new Date().toISOString(),
-    }).catch(() => null); // Silenciar error si tabla no existe
+    try {
+      const { error: dbError } = await supabase.from('alo_messages').insert({
+        chat_id: chatId,
+        user_name: msg.from.first_name,
+        message: text,
+        timestamp: new Date().toISOString(),
+      });
+      if (dbError) console.warn('[ALO] Supabase insert falló:', dbError.message);
+    } catch (e) {
+      console.warn('[ALO] Supabase insert falló:', e.message);
+    }
 
     // Responder
     const response = `Hola ${msg.from.first_name} 👋\n\nSoy ALO, tu asistente de infraestructura y DevOps.\n\n✅ Estoy escuchando en este canal.\n\nPuedo ayudarte con:\n- Cambios en el repositorio\n- Mantenimiento de infraestructura\n- Preguntas técnicas\n- Troubleshooting`;

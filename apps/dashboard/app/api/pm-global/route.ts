@@ -416,11 +416,11 @@ export async function POST(req: NextRequest) {
       (async () => {
         supabase = await createServerClient();
         const { data: { user: u } } = await supabase.auth.getUser();
-        user = u as typeof user;
-        if (user) {
+        if (u) {
+          user = { id: u.id };
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { data } = await (supabase as any)
-            .from('perfiles').select('rol,nombre').eq('id', user.id).single();
+            .from('perfiles').select('rol,nombre').eq('id', u.id).single();
           perfil = data as typeof perfil;
         }
       })(),

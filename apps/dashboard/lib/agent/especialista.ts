@@ -79,10 +79,13 @@ async function ejecutarSSH(
       host, port: 22, username: usuario, readyTimeout: 20000,
     };
 
-    if (fs.existsSync(keyPath)) {
+    if (fs.existsSync(keyPath) && fs.statSync(keyPath).isFile()) {
       connectOpts.privateKey = fs.readFileSync(keyPath);
       if (passphrase) connectOpts.passphrase = passphrase;
     } else {
+      if (fs.existsSync(keyPath)) {
+        console.error(`[SSH] SSH_KEY_PATH apunta a un directorio: ${keyPath}. Revisa el volumen Docker (/home/srvsozu/.ssh/id_rsa debe existir en el host).`);
+      }
       connectOpts.password = credencial;
     }
 

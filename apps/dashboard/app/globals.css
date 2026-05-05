@@ -156,9 +156,27 @@
 .sims-badge-bounce { animation: sims-badge-bounce-kf 1.4s ease-in-out infinite; }
 
 /* ── SSH pending — borde punteado giratorio ── */
-@keyframes dashOffset { to { stroke-dashoffset: -10; } }
+@keyframes dashMove {
+  0%   { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 20; }
+}
+
+@keyframes borderSpin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 
 .ssh-pending-wrap {
   position: relative;
   border-radius: 8px;
+}
+
+.ssh-pending-border {
+  position: absolute;
+  inset: 0;
+  border: 2px dashed #ef4444;
+  border-radius: 8px;
+  pointer-events: none;
+  animation: borderSpin 2s linear infinite;
+  opacity: 0.8;
 }

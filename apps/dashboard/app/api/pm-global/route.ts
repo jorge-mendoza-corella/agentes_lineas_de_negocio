@@ -409,7 +409,8 @@ export async function POST(req: NextRequest) {
   // Auth con timeout de 8 s — si Supabase no responde, el cliente recibe 504 en vez de colgar
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let supabase: any;
-  let user: { id: string } | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let user: any = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let perfil: any = null;
   try {

@@ -34,6 +34,10 @@ jobs:
           TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
           EOF
 
+          echo "✅ .env.docker created:"
+          wc -l .env.docker
+          head -5 .env.docker
+
       - name: Deploy to VPS via SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -41,18 +45,32 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY_PASSPHRASE: ${{ secrets.SSH_KEY_PASSPHRASE }}
         run: |
+          set -e
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no .env.docker "$SSH_USER@$SSH_HOST:/home/srvsozu/.openclaw/workspace/agentes_lineas_de_negocio/.env.docker"
+          echo "📤 Transferring .env.docker to VPS..."
+          scp -v -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            .env.docker "$SSH_USER@$SSH_HOST:/home/srvsozu/.openclaw/workspace/agentes_lineas_de_negocio/.env.docker"
 
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << 'SSHEOF'
+          echo "🚀 Redeploying containers..."
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" << 'SSHEOF'
           cd /home/srvsozu/.openclaw/workspace/agentes_lineas_de_negocio
-          docker-compose down
+          echo "📂 Current directory: $(pwd)"
+          echo "📄 Checking .env.docker:"
+          ls -lh .env.docker
+          echo "---"
+          head -3 .env.docker
+          echo "---"
+          echo "🛑 Stopping containers..."
+          docker-compose down --remove-orphans || true
+          echo "🚀 Starting containers..."
           docker-compose up -d
+          echo "✅ Deployment complete"
+          docker-compose ps
           SSHEOF
 
       - name: Deployment complete
-        run: echo "✅ All containers redeployed with latest secrets"
+        run: echo "✅ Workflow finished successfully"

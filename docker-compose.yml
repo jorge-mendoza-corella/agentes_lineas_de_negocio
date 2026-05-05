@@ -6,6 +6,8 @@ services:
     container_name: agentes-dashboard
     env_file:
       - apps/dashboard/.env.local
+    environment:
+      TZ: America/Mexico_City
     ports:
       - "3001:3000"
     volumes:
@@ -18,9 +20,10 @@ services:
     image: node:22-alpine
     container_name: alo-orchestrator
     working_dir: /app
-    command: node packages/pm-global-orchestrator.js
+    command: sh -c "npm install --production && node packages/pm-global-orchestrator.js"
     environment:
       NODE_ENV: ${NODE_ENV:-production}
+      TZ: America/Mexico_City
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
@@ -30,7 +33,7 @@ services:
       JORGE_CHAT_ID: ${JORGE_CHAT_ID}
     volumes:
       - .:/app
-      - /app/node_modules
+      - alo_node_modules:/app/node_modules
     networks:
       - agentes-network
     depends_on:
@@ -41,9 +44,10 @@ services:
     image: node:22-alpine
     container_name: sebas-orchestrator
     working_dir: /app
-    command: node packages/sebas-orchestrator.js
+    command: sh -c "npm install --production && node packages/sebas-orchestrator.js"
     environment:
       NODE_ENV: ${NODE_ENV:-production}
+      TZ: America/Mexico_City
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
@@ -53,7 +57,7 @@ services:
       JORGE_CHAT_ID: ${JORGE_CHAT_ID}
     volumes:
       - .:/app
-      - /app/node_modules
+      - sebas_node_modules:/app/node_modules
     networks:
       - agentes-network
     depends_on:
@@ -71,6 +75,10 @@ services:
 
 volumes:
   redis_data:
+    driver: local
+  alo_node_modules:
+    driver: local
+  sebas_node_modules:
     driver: local
 
 networks:

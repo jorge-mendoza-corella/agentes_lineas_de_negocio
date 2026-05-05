@@ -9,6 +9,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
+if (!token) { console.error('[SEBAS] FATAL: TELEGRAM_BOT_TOKEN_SEBAS no configurado'); process.exit(1); }
+if (!anthropicKey) { console.error('[SEBAS] FATAL: ANTHROPIC_API_KEY no configurado'); process.exit(1); }
+
 const bot = new TelegramBot(token, { polling: true });
 const supabase = createClient(supabaseUrl, supabaseKey);
 const client = new Anthropic({ apiKey: anthropicKey });
@@ -69,7 +72,7 @@ async function processRequest(chatId, userMessage, userName) {
 
     // Obtener respuesta de Claude
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: history,
@@ -90,8 +93,7 @@ async function processRequest(chatId, userMessage, userName) {
     await bot.sendMessage(chatId, assistantMessage);
 
     // Log en Supabase (opcional)
-    await supabase
-      .from('sebas_messages')
+    await supabase.from('sebas_messages')
       .insert({
         chat_id: chatId,
         user_name: userName,
@@ -108,7 +110,6 @@ async function processRequest(chatId, userMessage, userName) {
     );
   }
 }
-
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
@@ -129,7 +130,7 @@ bot.on('message', async (msg) => {
 });
 
 bot.on('polling_error', (error) => {
-  console.error('[SEBAS] Error de polling:', error);
+  console.error('[SEBAS] Error de polling:', error.code, error.message);
 });
 
 console.log('✅ SEBAS PM Global listo - conversacional y contextual');

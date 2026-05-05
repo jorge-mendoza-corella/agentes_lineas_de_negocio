@@ -124,13 +124,13 @@ function deriveCompanyZones(tareas: Tarea[]): CompanyZoneInfo[] {
     if (pn) zoneMap.get(eid)!.proyectos.add(pn);
   }
 
-  // Empresa primaria por agente: en_progreso > pendiente
+  // Empresa primaria por agente: en_progreso > pendiente (excluir PM Global)
   const agentPrimary = new Map<string, string>();
   for (const t of active) {
-    if (t.estado === 'en_progreso') agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
+    if (t.estado === 'en_progreso' && t.agente_asignado !== 'pm-global') agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
   }
   for (const t of active) {
-    if (!agentPrimary.has(t.agente_asignado)) agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
+    if (!agentPrimary.has(t.agente_asignado) && t.agente_asignado !== 'pm-global') agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
   }
 
   // Fantasmas: agentes con tareas en empresa secundaria

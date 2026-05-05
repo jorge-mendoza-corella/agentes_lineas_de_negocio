@@ -11,15 +11,8 @@ COPY packages/db/package.json ./packages/db/
 COPY packages/shared/package.json ./packages/shared/
 RUN pnpm install --frozen-lockfile
 
-# Copiar código fuente y compilar
+# Copiar código fuente (incluye apps/dashboard/.env.local escrito por el deploy script)
 COPY . .
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ARG NEXT_PUBLIC_APP_URL
-# Escribir .env.local para que Next.js encuentre las vars durante el build
-RUN printf "NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nNEXT_PUBLIC_APP_URL=%s\n" \
-    "$NEXT_PUBLIC_SUPABASE_URL" "$NEXT_PUBLIC_SUPABASE_ANON_KEY" "$NEXT_PUBLIC_APP_URL" \
-    > apps/dashboard/.env.local
 RUN pnpm --filter @agentes/dashboard build
 
 # --- runner: imagen de producción mínima ---

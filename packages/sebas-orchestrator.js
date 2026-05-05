@@ -8,90 +8,294 @@ const token = process.env.TELEGRAM_BOT_TOKEN_SEBAS || process.env.TELEGRAM_BOT_T
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
-const jorgeChatId = process.env.JORGE_CHAT_ID;
 
 if (!token) { console.error('[SEBAS] FATAL: TELEGRAM_BOT_TOKEN_SEBAS no configurado'); process.exit(1); }
 if (!anthropicKey) { console.error('[SEBAS] FATAL: ANTHROPIC_API_KEY no configurado'); process.exit(1); }
 
 const bot = new TelegramBot(token, { polling: true });
-const supabase = createClient(supabaseUrl || '', supabaseKey || '');
+const supabase = createClient(supabaseUrl, supabaseKey);
 const client = new Anthropic({ apiKey: anthropicKey });
 
 console.log('🎯 SEBAS PM Global iniciando...');
-console.log(`📱 Token: ${token ? token.slice(0, 10) + '...' : 'NO configurado ❌'}`);
-console.log(`🔗 Supabase: ${supabaseUrl ? 'configurado ✅' : 'NO configurado ❌'}`);
-console.log(`🧠 Anthropic: ${anthropicKey ? 'configurado ✅' : 'NO configurado ❌'}`);
+console.log(`📱 Token: ${token ? 'configurado ✅' : 'NO configurado ❌'}`);
 
-const AGENT_TYPES = [
-  'dev-analista',
-  'dev-backend',
-  'dev-frontend',
-  'dev-bd',
-  'dev-testing',
-  'dev-devops',
-  'dev-documentador',
-  'dev-diseño',
+const conversations = new Map();
+
+const CLAUDE_TOOLS = [
+  {
+    name: 'log_bitacora',
+    description: 'Registra una acción en la bitácora de actividad. Úsalo para cada decisión o acción importante.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agente:      { type: 'string', description: 'Nombre del agente, ej: pm-global' },
+        accion:      { type: 'string', description: 'Descripción de la acción realizada' },
+        proyecto_id: { type: 'string', description: 'UUID del proyecto relacionado (opcional)' },
+        tarea_id:    { type: 'string', description: 'UUID de la tarea relacionada (opcional)' },
+      },
+      required: ['agente', 'accion'],
+    },
+  },
+  {
+    name: 'crear_tarea',
+    description: 'Crea una tarea asignada a un agente especialista. SIEMPRE incluye plan_ejecucion con los pasos concretos.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agente_asignado: {
+          type: 'string',
+          enum: [
+            'dev-pm','dev-analista','dev-backend','dev-bd','dev-frontend','dev-devops',
+            'dev-testing','dev-diseno','dev-documentador','dev-seguridad','dev-ciberseguridad',
+            'dev-redes','dev-soporte','dev-imagenes','dev-presentaciones','dev-videojuegos',
+          ],
+          description: 'Agente que ejecutará la tarea',
+        },
+        descripcion:       { type: 'string', description: 'Qué debe hacer exactamente el agente' },
+        plan_ejecucion:    { type: 'string', description: 'Plan detallado: pasos numerados, comandos específicos, criterios de éxito' },
+        proyecto_id:       { type: 'string', description: 'UUID del proyecto (opcional)' },
+        requerimiento_id:  { type: 'string', description: 'UUID del requerimiento (opcional)' },
+        rama:              { type: 'string', description: 'Rama de Git sugerida (opcional)' },
+      },
+      required: ['agente_asignado', 'descripcion', 'plan_ejecucion'],
+    },
+  },
+  {
+    name: 'actualizar_avatar_estado',
+    description: 'Actualiza la animación del avatar de un agente en el dashboard.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agente_nombre:    { type: 'string', description: 'Ej: pm-global, dev-backend' },
+        estado_animacion: { type: 'string', enum: ['idle','caminando','trabajando','hablando','celebrando'] },
+      },
+      required: ['agente_nombre', 'estado_animacion'],
+    },
+  },
+  {
+    name: 'consultar_proyectos',
+    description: 'Obtiene los proyectos activos del sistema.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        estado: { type: 'string', enum: ['activo','pausado','cerrado'], description: 'Filtrar por estado (opcional)' },
+      },
+    },
+  },
+  {
+    name: 'consultar_tareas',
+    description: 'Consulta las tareas registradas en BD.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agente_asignado: { type: 'string', description: 'Filtrar por agente (ej: dev-devops)' },
+        estado: { type: 'string', enum: ['pendiente','en_progreso','completada','cancelada'] },
+        limite: { type: 'number', description: 'Máximo de resultados (default 10)' },
+      },
+    },
+  },
 ];
 
-async function identifyRequiredAgents(request) {
+const SYSTEM_PROMPT = `# PM Global — Servicios Agénticos
+
+**Tu nombre es Sebas.** Eres el Project Manager raíz que coordina todas las áreas de negocio.
+
+## Tu identidad
+- **Nombre:** Sebas
+- **Rol:** PM Global
+- **Funciones:**
+  - Orquestar y coordinar agentes especialistas
+  - Delegar tareas a agentes de desarrollo
+  - Tomar decisiones estratégicas
+  - Monitorear progreso real de tareas
+  - Ser el único punto de contacto con stakeholders
+
+## Libre albedrío — cuándo actuar
+
+### 🟢 ACTUAR SOLO (sin preguntar)
+- Crear tareas para agentes especialistas
+- Registrar en bitácora cada decisión importante
+- Animar avatares en el dashboard durante acciones
+
+### 🟡 INFORMAR Y PROCEDER
+- Cambios de arquitectura menores
+- Modificar configuración con impacto visual
+
+### 🔴 PEDIR CONFIRMACIÓN
+- Eliminar datos de producción
+- Cambios de seguridad irreversibles
+- Gastos externos
+
+## Flujo de trabajo
+
+1. **Analiza** la solicitud y clasifica el nivel (🟢/🟡/🔴)
+2. **Si es 🟢:** Usa \`crear_tarea\` para delegar. Registra en \`log_bitacora\`.
+3. **Usa \`actualizar_avatar_estado\`** para animar tu avatar en cada fase (trabajando → caminando → idle)
+4. Responde siempre en español. Sé conversacional, no robótico.
+
+## Herramientas disponibles
+- \`crear_tarea\`: Crea tareas para agentes
+- \`log_bitacora\`: Registra decisiones en bitácora
+- \`actualizar_avatar_estado\`: Anima tu avatar
+- \`consultar_proyectos\`: Obtiene proyectos activos
+- \`consultar_tareas\`: Consulta tareas reales`;
+
+async function ejecutarTool(nombre, input, db) {
   try {
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 200,
-      system: `Eres un PM Global que identifica qué agentes especializados se necesitan.
+    switch (nombre) {
+      case 'log_bitacora': {
+        const { agente, accion, proyecto_id, tarea_id } = input;
+        const { error } = await db.from('bitacora_actividad').insert({
+          agente, accion, proyecto_id: proyecto_id ?? null, tarea_id: tarea_id ?? null,
+        });
+        return error ? JSON.stringify({ error: error.message }) : JSON.stringify({ ok: true });
+      }
+      case 'crear_tarea': {
+        const { requerimiento_id, agente_asignado, descripcion, rama, plan_ejecucion, proyecto_id } = input;
+        const { data, error } = await db.from('tareas').insert({
+          requerimiento_id: requerimiento_id ?? null,
+          agente_asignado,
+          descripcion,
+          plan_ejecucion: plan_ejecucion ?? null,
+          proyecto_id: proyecto_id ?? null,
+          rama: rama ?? null,
+          estado: 'pendiente',
+        }).select('id').single();
 
-Agentes disponibles: dev-analista, dev-backend, dev-frontend, dev-bd, dev-testing, dev-devops, dev-documentador, dev-diseño
+        if (error) return JSON.stringify({ error: error.message });
 
-Responde SOLO con una lista separada por comas, sin explicación. Ej: dev-analista, dev-backend`,
-      messages: [{ role: 'user', content: request }],
-    });
+        // Auto-log y animar agente
+        await Promise.all([
+          db.from('bitacora_actividad').insert({
+            agente: agente_asignado,
+            accion: `Tarea recibida: ${descripcion}`,
+            tarea_id: data?.id ?? null,
+          }),
+          db.from('avatares').update({ estado_animacion: 'caminando' }).eq('agente_nombre', agente_asignado),
+        ]);
 
-    const agentsText = message.content[0].text
-      .split(',')
-      .map((a) => a.trim())
-      .filter((a) => AGENT_TYPES.includes(a));
+        return JSON.stringify({ ok: true, id: data?.id });
+      }
+      case 'actualizar_avatar_estado': {
+        const { agente_nombre, estado_animacion } = input;
+        const { error } = await db.from('avatares').update({ estado_animacion }).eq('agente_nombre', agente_nombre);
+        return error ? JSON.stringify({ error: error.message }) : JSON.stringify({ ok: true });
+      }
+      case 'consultar_proyectos': {
+        const { estado } = input;
+        let q = db.from('proyectos').select('id,nombre,descripcion,estado,creado_en').order('creado_en', { ascending: false }).limit(10);
+        if (estado) q = q.eq('estado', estado);
+        const { data, error } = await q;
+        return error ? JSON.stringify({ error: error.message }) : JSON.stringify({ proyectos: data });
+      }
+      case 'consultar_tareas': {
+        const { agente_asignado, estado, limite } = input;
+        let q = db.from('tareas').select('id,agente_asignado,descripcion,estado,notas,rama,creado_en')
+          .order('creado_en', { ascending: false }).limit(limite ?? 10);
+        if (agente_asignado) q = q.eq('agente_asignado', agente_asignado);
+        if (estado) q = q.eq('estado', estado);
+        const { data, error } = await q;
+        return error ? JSON.stringify({ error: error.message }) : JSON.stringify({ tareas: data ?? [] });
+      }
+      default:
+        return JSON.stringify({ error: `Tool desconocida: ${nombre}` });
+    }
+  } catch (e) {
+    return JSON.stringify({ error: String(e) });
+  }
+}
 
-    return agentsText.length > 0 ? agentsText : ['dev-analista'];
+async function processRequest(chatId, userMessage, userName) {
+  try {
+    let history = conversations.get(chatId) || [];
+
+    history.push({ role: 'user', content: userMessage });
+    if (history.length > 20) history = history.slice(-20);
+
+    const messages = [...history];
+    const MAX_ITERATIONS = 5;
+
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
+        system: SYSTEM_PROMPT,
+        messages,
+        tools: CLAUDE_TOOLS,
+      });
+
+      let textContent = '';
+      const toolUses = [];
+
+      for (const block of response.content) {
+        if (block.type === 'text') {
+          textContent += block.text;
+        } else if (block.type === 'tool_use') {
+          toolUses.push(block);
+        }
+      }
+
+      if (textContent) {
+        await bot.sendMessage(chatId, textContent);
+        history.push({ role: 'assistant', content: textContent });
+      }
+
+      if (toolUses.length === 0) break;
+
+      messages.push({ role: 'assistant', content: response.content });
+      const toolResults = [];
+
+      for (const tu of toolUses) {
+        console.log(`[SEBAS] Ejecutando tool: ${tu.name}`);
+        const result = await ejecutarTool(tu.name, tu.input, supabase);
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result });
+      }
+
+      messages.push({ role: 'user', content: toolResults });
+    }
+
+    conversations.set(chatId, history);
+
+    // Log en Supabase
+    try {
+      await supabase.from('sebas_messages').insert({
+        chat_id: chatId,
+        user_name: userName,
+        user_message: userMessage,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (dbError) {
+      console.warn('[SEBAS] Error guardando en Supabase:', dbError.message);
+    }
+
+    // Animar a idle al terminar
+    try {
+      await supabase.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', 'pm-global');
+    } catch (e) {
+      console.warn('[SEBAS] Error animando a idle:', e.message);
+    }
+
   } catch (error) {
-    console.error('[SEBAS] Error Claude API:', error.message);
-    return ['dev-analista'];
+    console.error('[SEBAS] Error completo:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    await bot.sendMessage(
+      chatId,
+      `Disculpa, tuve un problema: ${errorMsg.substring(0, 100)}`
+    ).catch(e => console.error('[SEBAS] Error al enviar:', e));
   }
 }
 
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
+  const userName = msg.from.first_name || msg.from.username || 'Usuario';
 
-  // Ignorar mensajes sin texto (stickers, fotos, etc.)
-  if (!text) return;
+  console.log(`[SEBAS] Mensaje de ${userName}: ${text}`);
 
-  const senderName = msg.from?.first_name || 'Usuario';
-  console.log(`[SEBAS] Mensaje de ${senderName} (${chatId}): ${text}`);
+  if (!text || text.startsWith('/')) return;
 
-  try {
-    const agents = await identifyRequiredAgents(text);
-    console.log(`[SEBAS] Agentes identificados: ${agents.join(', ')}`);
-
-    try {
-      const { error: dbError } = await supabase.from('sebas_messages').insert({
-        chat_id: chatId,
-        user_name: senderName,
-        message: text,
-        agents_identified: agents,
-        timestamp: new Date().toISOString(),
-      });
-      if (dbError) console.warn('[SEBAS] Supabase insert falló:', dbError.message);
-    } catch (e) {
-      console.warn('[SEBAS] Supabase insert falló:', e.message);
-    }
-
-    const response = `🎯 *SEBAS — PM Global*\n\n📋 Solicitud: "${text}"\n\n🔍 Agentes identificados:\n${agents.map((a) => `• ${a}`).join('\n')}\n\n⏳ Delegando tareas...`;
-
-    await bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
-  } catch (error) {
-    console.error('[SEBAS] Error en handler:', error.message, error.stack);
-    await bot.sendMessage(chatId, '❌ Error procesando tu solicitud').catch(() => null);
-  }
+  await bot.sendChatAction(chatId, 'typing');
+  await processRequest(chatId, text, userName);
 });
 
 bot.on('polling_error', (error) => {

@@ -124,13 +124,13 @@ function deriveCompanyZones(tareas: Tarea[]): CompanyZoneInfo[] {
     if (pn) zoneMap.get(eid)!.proyectos.add(pn);
   }
 
-  // Empresa primaria por agente: en_progreso > pendiente
+  // Empresa primaria por agente: en_progreso > pendiente (excluir PM Global)
   const agentPrimary = new Map<string, string>();
   for (const t of active) {
-    if (t.estado === 'en_progreso') agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
+    if (t.estado === 'en_progreso' && t.agente_asignado !== 'pm-global') agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
   }
   for (const t of active) {
-    if (!agentPrimary.has(t.agente_asignado)) agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
+    if (!agentPrimary.has(t.agente_asignado) && t.agente_asignado !== 'pm-global') agentPrimary.set(t.agente_asignado, t.proyecto!.empresa_id);
   }
 
   // Fantasmas: agentes con tareas en empresa secundaria
@@ -1640,9 +1640,11 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                           <div key={b.id} style={{
                                             borderRadius: 8,
                                             background: isPending2 ? 'rgba(12,18,33,0.95)' : isError2 ? 'rgba(30,8,8,0.85)' : isCmd2 ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
-                                            border: isPending2 ? 'none' : `1px solid ${accentColor2}22`,
+                                            border: `1px solid ${accentColor2}22`,
                                             display:'flex', overflow:'hidden',
+                                            position: 'relative',
                                           }}>
+                                            {isPending2 && <div className="ssh-pending-border" />}
                                             {/* Franja lateral */}
                                             <div style={{
                                               width: 28, flexShrink:0,
@@ -1686,9 +1688,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                           </div>
                                         );
 
-                                        return isPending2
-                                          ? <div key={b.id} className="ssh-pending-wrap">{card2}</div>
-                                          : card2;
+                                        return card2;
                                       })}
                                     </div>
                                   </>

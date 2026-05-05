@@ -155,28 +155,28 @@
 }
 .sims-badge-bounce { animation: sims-badge-bounce-kf 1.4s ease-in-out infinite; }
 
-/* ── SSH pending — borde giratorio ── */
-@keyframes ssh-spin-kf { to { transform: rotate(360deg); } }
+/* ── SSH pending — borde punteado giratorio ── */
+@keyframes dashMove {
+  0%   { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 20; }
+}
+
+@keyframes borderSpin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 
 .ssh-pending-wrap {
   position: relative;
   border-radius: 8px;
-  isolation: isolate;
 }
-.ssh-pending-wrap::before {
-  content: '';
+
+.ssh-pending-border {
   position: absolute;
-  inset: -2px;
-  border-radius: 10px;
-  background: conic-gradient(from 0deg, #3b82f6 0deg, #60a5fa 60deg, transparent 120deg, transparent 240deg, #818cf8 300deg, #3b82f6 360deg);
-  animation: ssh-spin-kf 1.6s linear infinite;
-  z-index: -1;
-}
-.ssh-pending-wrap::after {
-  content: '';
-  position: absolute;
-  inset: 1px;
-  border-radius: 7px;
-  background: #0c1221;
-  z-index: -1;
+  inset: 0;
+  border: 2px dashed #ef4444;
+  border-radius: 8px;
+  pointer-events: none;
+  animation: borderSpin 2s linear infinite;
+  opacity: 0.8;
 }

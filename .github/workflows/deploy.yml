@@ -14,26 +14,20 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: >-
-            NEXT_PUBLIC_SUPABASE_URL,
-            NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            NEXT_PUBLIC_APP_URL,
-            SUPABASE_SERVICE_ROLE_KEY,
-            ANTHROPIC_API_KEY,
-            GOOGLE_GEMINI_API_KEY,
-            INTERNAL_API_KEY,
-            SSH_KEY_PASSPHRASE,
-            SSH_SUDO_PASSWORD,
-            VPS_HOST,
-            VPS_USER,
-            TELEGRAM_BOT_TOKEN,
-            TELEGRAM_CHAT_ID,
-            CLOUDFLARE_API_TOKEN
+          envs: NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_APP_URL,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,GOOGLE_GEMINI_API_KEY,INTERNAL_API_KEY,SSH_KEY_PASSPHRASE,SSH_SUDO_PASSWORD,VPS_HOST,VPS_USER,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,CLOUDFLARE_API_TOKEN
           script: |
             set -e
             cd /opt/agentes_lineas_de_negocio
             git pull origin main
 
+            # .env raíz — Docker Compose lo lee para sustituir las vars en docker-compose.yml
+            cat > .env << EOF
+            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+            NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+            EOF
+
+            # .env.local del dashboard — vars de runtime del servidor Next.js
             cat > apps/dashboard/.env.local << EOF
             NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
             NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY

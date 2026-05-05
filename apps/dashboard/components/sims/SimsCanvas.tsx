@@ -1640,8 +1640,11 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                           <div key={b.id} style={{
                                             borderRadius: 8,
                                             background: isPending2 ? 'rgba(12,18,33,0.95)' : isError2 ? 'rgba(30,8,8,0.85)' : isCmd2 ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
-                                            border: isPending2 ? 'none' : `1px solid ${accentColor2}22`,
+                                            border: isPending2 ? '1.5px dashed #3b82f6' : `1px solid ${accentColor2}22`,
                                             display:'flex', overflow:'hidden',
+                                            position: 'relative',
+                                            animation: isPending2 ? 'borderRotate 3s linear infinite' : 'none',
+                                            backgroundClip: isPending2 ? 'padding-box' : 'unset',
                                           }}>
                                             {/* Franja lateral */}
                                             <div style={{
@@ -1686,9 +1689,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                           </div>
                                         );
 
-                                        return isPending2
-                                          ? <div key={b.id} className="ssh-pending-wrap">{card2}</div>
-                                          : card2;
+                                        return card2;
                                       })}
                                     </div>
                                   </>

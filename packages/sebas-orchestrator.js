@@ -269,7 +269,11 @@ async function processRequest(chatId, userMessage, userName) {
     }
 
     // Animar a idle al terminar
-    await supabase.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', 'pm-global').catch(() => null);
+    try {
+      await supabase.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', 'pm-global');
+    } catch (e) {
+      console.warn('[SEBAS] Error animando a idle:', e.message);
+    }
 
   } catch (error) {
     console.error('[SEBAS] Error completo:', error);

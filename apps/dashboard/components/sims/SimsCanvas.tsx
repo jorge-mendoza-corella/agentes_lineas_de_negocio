@@ -1535,7 +1535,9 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                         background: isPending ? 'rgba(12,18,33,0.95)' : isError ? 'rgba(30,8,8,0.85)' : isCmd ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
                                         border: isPending ? 'none' : `1px solid ${accentColor}22`,
                                         display:'flex', overflow:'hidden',
+                                        position: 'relative',
                                       }}>
+                                        {isPending && <div className="ssh-pending-border" />}
                                         {/* Franja lateral de tipo */}
                                         <div style={{
                                           width: 28, flexShrink:0,

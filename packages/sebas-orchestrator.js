@@ -72,13 +72,18 @@ bot.on('message', async (msg) => {
     const agents = await identifyRequiredAgents(text);
     console.log(`[SEBAS] Agentes identificados: ${agents.join(', ')}`);
 
-    await supabase.from('sebas_messages').insert({
-      chat_id: chatId,
-      user_name: senderName,
-      message: text,
-      agents_identified: agents,
-      timestamp: new Date().toISOString(),
-    }).catch((e) => console.warn('[SEBAS] Supabase insert falló (no crítico):', e.message));
+    try {
+      const { error: dbError } = await supabase.from('sebas_messages').insert({
+        chat_id: chatId,
+        user_name: senderName,
+        message: text,
+        agents_identified: agents,
+        timestamp: new Date().toISOString(),
+      });
+      if (dbError) console.warn('[SEBAS] Supabase insert falló:', dbError.message);
+    } catch (e) {
+      console.warn('[SEBAS] Supabase insert falló:', e.message);
+    }
 
     const response = `🎯 *SEBAS — PM Global*\n\n📋 Solicitud: "${text}"\n\n🔍 Agentes identificados:\n${agents.map((a) => `• ${a}`).join('\n')}\n\n⏳ Delegando tareas...`;
 

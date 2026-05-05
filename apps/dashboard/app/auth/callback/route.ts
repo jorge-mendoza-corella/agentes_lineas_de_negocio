@@ -2,12 +2,15 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const next = searchParams.get('next') ?? '/';
 
+  // NEXT_PUBLIC_APP_URL evita usar la dirección interna del contenedor (0.0.0.0:3000)
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+
   if (code) {
-    const redirectTo = `${origin}${next}`;
+    const redirectTo = `${appUrl}${next}`;
     const response = NextResponse.redirect(redirectTo);
 
     const supabase = createServerClient(
@@ -31,5 +34,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth`);
+  return NextResponse.redirect(`${appUrl}/login?error=auth`);
 }

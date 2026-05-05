@@ -1,9 +1,10 @@
 node_modules
 .next
 .git
-.env
-.env.local
-.env.*.local
+# Solo excluir .env en la raíz — apps/dashboard/.env.local SÍ se incluye (lo escribe el deploy script)
+/.env
+/.env.local
+/.env.*.local
 .claude
 salida
 *.tsbuildinfo

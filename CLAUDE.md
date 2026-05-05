@@ -114,16 +114,34 @@ Toda solución debe considerar estas áreas como usuarios potenciales. Al diseñ
 ### Estructura estándar
 | Rama | Propósito |
 |---|---|
-| `main` | Producción. Default. Solo entra vía PR aprobado. |
-| `dev`  | Desarrollo / staging. Permite push directo. |
+| `main` | Producción. Solo entra vía PR desde `dev`. |
+| `dev`  | Staging / integración. Solo entra vía PR desde `feature/*`. |
+| `feature/<nombre>` | Una rama por funcionalidad. Se crea desde `dev`, se mergea a `dev` vía PR. |
 
 ### Flujo
 
 ```
-feature/xxx  →  push  →  dev  →  PR  →  main
+dev  →  git checkout -b feature/nombre-corto
+              ↓  (commits de la funcionalidad)
+        PR → dev  →  PR → main
 ```
 
-Nunca merge directo a `main` sin PR.
+- Nunca hacer push directo a `dev` ni a `main`.
+- Cada nueva funcionalidad = nueva `feature/` branch desde `dev`.
+- Se pueden tener múltiples `feature/` branches activas en paralelo.
+- Al terminar la funcionalidad → PR a `dev` → revisar → merge.
+- Cuando `dev` está estable → PR a `main` → merge a producción.
+
+### Crear una feature branch
+
+```bash
+git checkout dev
+git pull origin dev
+git checkout -b feature/nombre-descriptivo
+# ... trabajar y commitear ...
+git push -u origin feature/nombre-descriptivo
+gh pr create --base dev --title "feat: descripción" --body "..."
+```
 
 ### Setup de repo nuevo
 
@@ -133,15 +151,9 @@ git add . && git commit -m "feat: initial commit"
 gh repo create NOMBRE_REPO --private --source=. --push
 git checkout -b dev && git push -u origin dev
 gh api repos/{owner}/{repo} --method PATCH -f default_branch=main
-gh api repos/{owner}/{repo}/branches/main/protection \
-  --method PUT \
-  --field required_pull_request_reviews='{"required_approving_review_count":1}' \
-  --field enforce_admins=false \
-  --field restrictions=null \
-  --field required_status_checks=null
+# Protección de ramas requiere GitHub Pro en repos privados
+# gh api repos/{owner}/{repo}/branches/main/protection --method PUT ...
 ```
-
-> Nota: la protección de ramas vía branch protection requiere GitHub Pro/Team en repos privados, o repo público.
 
 ---
 

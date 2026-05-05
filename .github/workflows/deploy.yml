@@ -1,0 +1,75 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy en servidor via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: >-
+            NEXT_PUBLIC_SUPABASE_URL,
+            NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            NEXT_PUBLIC_APP_URL,
+            SUPABASE_SERVICE_ROLE_KEY,
+            ANTHROPIC_API_KEY,
+            GOOGLE_GEMINI_API_KEY,
+            INTERNAL_API_KEY,
+            SSH_KEY_PASSPHRASE,
+            SSH_SUDO_PASSWORD,
+            VPS_HOST,
+            VPS_USER,
+            TELEGRAM_BOT_TOKEN,
+            TELEGRAM_CHAT_ID,
+            CLOUDFLARE_API_TOKEN
+          script: |
+            set -e
+            cd /opt/agentes_lineas_de_negocio
+            git pull origin main
+
+            cat > apps/dashboard/.env.local << EOF
+            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+            SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+            NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+            DASHBOARD_URL=$NEXT_PUBLIC_APP_URL
+            ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+            GOOGLE_GEMINI_API_KEY=$GOOGLE_GEMINI_API_KEY
+            INTERNAL_API_KEY=$INTERNAL_API_KEY
+            SSH_KEY_PATH=/app/.ssh/agent_key
+            SSH_KEY_PASSPHRASE=$SSH_KEY_PASSPHRASE
+            SSH_SUDO_PASSWORD=$SSH_SUDO_PASSWORD
+            VPS_HOST=$VPS_HOST
+            VPS_USER=$VPS_USER
+            SSH_DEFAULT_HOST=$VPS_HOST
+            SSH_DEFAULT_USER=$VPS_USER
+            TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+            TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
+            CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN
+            EOF
+
+            docker compose build
+            docker compose up -d --force-recreate
+            docker compose ps
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GEMINI_API_KEY: ${{ secrets.GOOGLE_GEMINI_API_KEY }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          SSH_KEY_PASSPHRASE: ${{ secrets.SSH_KEY_PASSPHRASE }}
+          SSH_SUDO_PASSWORD: ${{ secrets.SSH_SUDO_PASSWORD }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

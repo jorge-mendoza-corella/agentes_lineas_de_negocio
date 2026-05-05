@@ -4,28 +4,14 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: agentes-dashboard
-    environment:
-      NODE_ENV: production
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      GOOGLE_GEMINI_API_KEY: ${GOOGLE_GEMINI_API_KEY}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-      NEXT_TELEMETRY_DISABLED: 1
+    env_file:
+      - apps/dashboard/.env.local
     ports:
       - "3001:3000"
     volumes:
-      - ./apps/dashboard:/app/apps/dashboard
-      - /app/node_modules
+      - /home/srvsozu/.ssh/id_rsa:/app/.ssh/agent_key:ro
     networks:
       - agentes-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     restart: unless-stopped
 
   alo:

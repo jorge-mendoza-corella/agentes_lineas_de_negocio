@@ -36,7 +36,7 @@ const AGENT_TYPES = [
 async function identifyRequiredAgents(request) {
   try {
     const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       max_tokens: 200,
       system: `Eres un PM Global que identifica qué agentes especializados se necesitan.
 

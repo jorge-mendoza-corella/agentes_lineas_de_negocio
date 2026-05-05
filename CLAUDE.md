@@ -148,11 +148,11 @@ gh pr create --base dev --title "feat: descripción" --body "..."
 ```bash
 git init -b main
 git add . && git commit -m "feat: initial commit"
-gh repo create NOMBRE_REPO --private --source=. --push
+gh repo create NOMBRE_REPO --source=. --push
 git checkout -b dev && git push -u origin dev
 gh api repos/{owner}/{repo} --method PATCH -f default_branch=main
-# Protección de ramas requiere GitHub Pro en repos privados
-# gh api repos/{owner}/{repo}/branches/main/protection --method PUT ...
+# Ruleset — protege main y dev (requiere repo público o GitHub Pro)
+gh api repos/{owner}/{repo}/rulesets --method POST --input ruleset.json
 ```
 
 ---

@@ -21,6 +21,8 @@ services:
     container_name: alo-orchestrator
     working_dir: /app
     command: sh -c "npm install --production && node packages/pm-global-orchestrator.js"
+    env_file:
+      - .env.docker
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       TZ: America/Mexico_City
@@ -45,6 +47,8 @@ services:
     container_name: sebas-orchestrator
     working_dir: /app
     command: sh -c "npm install --production && node packages/sebas-orchestrator.js"
+    env_file:
+      - .env.docker
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       TZ: America/Mexico_City

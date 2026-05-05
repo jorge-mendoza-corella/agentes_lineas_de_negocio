@@ -58,15 +58,19 @@ export default function MonitorTareasEstancadas({ userId }: { userId: string }) 
       const intentos = getMap(STORAGE_INTENTOS);
       const alertadas = getSet(STORAGE_ALERTAS);
 
-      // ── 1. Tareas PENDIENTES sin intento reciente ─────────────────────────
-      const { data: pendientes } = await (supabase as any)
+      // Una sola query para pendientes y en_progreso
+      const { data: todasTareas } = await (supabase as any)
         .from('tareas')
-        .select('id, descripcion, agente_asignado, notas')
-        .eq('estado', 'pendiente')
+        .select('id, descripcion, agente_asignado, notas, iniciado_en, estado')
+        .in('estado', ['pendiente', 'en_progreso'])
         .order('creado_en', { ascending: true })
-        .limit(10);
+        .limit(20);
 
-      for (const t of pendientes ?? []) {
+      const pendientes = (todasTareas ?? []).filter((t: any) => t.estado === 'pendiente');
+      const enProgreso = (todasTareas ?? []).filter((t: any) => t.estado === 'en_progreso');
+
+      // ── 1. Tareas PENDIENTES sin intento reciente ─────────────────────────
+      for (const t of pendientes) {
         const ultimoIntento = intentos[t.id] ?? 0;
         const minDesdeIntento = (ahora - ultimoIntento) / 60000;
         const bloqueada = typeof t.notas === 'string' &&
@@ -81,11 +85,6 @@ export default function MonitorTareasEstancadas({ userId }: { userId: string }) 
       }
 
       // ── 2. Tareas EN_PROGRESO sin actividad reciente ─────────────────────
-      const { data: enProgreso } = await (supabase as any)
-        .from('tareas')
-        .select('id, descripcion, agente_asignado, iniciado_en')
-        .eq('estado', 'en_progreso')
-        .limit(10);
 
       for (const t of enProgreso ?? []) {
         const ultimoIntento = intentos[t.id] ?? 0;

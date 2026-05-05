@@ -302,4 +302,49 @@ bot.on('polling_error', (error) => {
   console.error('[SEBAS] Error de polling:', error.code, error.message);
 });
 
-console.log('✅ SEBAS PM Global listo - con herramientas de acción completas');
+// ── Notificaciones proactivas desde agentes ───────────────────────────────
+// Polling cada 15 s: revisa mensajes automáticos de agentes en mensajes_pm
+// y los reenvía al stakeholder por Telegram.
+let lastNotificacionAt = new Date().toISOString();
+
+async function enviarNotificacionesPendientes() {
+  if (!jorgeChatId) return;
+  try {
+    const { data, error } = await supabase
+      .from('mensajes_pm')
+      .select('id, contenido, created_at, metadata')
+      .eq('rol', 'agente')
+      .gt('created_at', lastNotificacionAt)
+      .order('created_at', { ascending: true })
+      .limit(10);
+
+    if (error) { console.warn('[SEBAS] Polling mensajes_pm error:', error.message); return; }
+    if (!data || data.length === 0) return;
+
+    for (const msg of data) {
+      const esAutomatico = msg.metadata?.automatico === true;
+      if (!esAutomatico) continue;
+
+      const fuente = msg.metadata?.fuente || 'agente';
+      const texto = `📬 *Notificación de ${fuente}*\n\n${msg.contenido}`;
+      try {
+        await bot.sendMessage(jorgeChatId, texto, { parse_mode: 'Markdown' });
+        console.log(`[SEBAS] Notificación enviada de ${fuente}`);
+      } catch (e) {
+        // Reintentar sin Markdown si hay error de formato
+        try {
+          await bot.sendMessage(jorgeChatId, `📬 Notificación de ${fuente}\n\n${msg.contenido}`);
+        } catch (e2) {
+          console.warn('[SEBAS] Error enviando notificación:', e2.message);
+        }
+      }
+    }
+
+    lastNotificacionAt = data[data.length - 1].created_at;
+  } catch (e) {
+    console.warn('[SEBAS] Error en polling notificaciones:', e.message);
+  }
+}
+
+setInterval(enviarNotificacionesPendientes, 15000);
+console.log('✅ SEBAS PM Global listo — polling de notificaciones activo cada 15s');

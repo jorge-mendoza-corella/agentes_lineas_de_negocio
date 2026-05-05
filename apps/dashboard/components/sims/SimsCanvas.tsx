@@ -1640,11 +1640,11 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                                           <div key={b.id} style={{
                                             borderRadius: 8,
                                             background: isPending2 ? 'rgba(12,18,33,0.95)' : isError2 ? 'rgba(30,8,8,0.85)' : isCmd2 ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
-                                            border: isPending2 ? '1.5px dashed #3b82f6' : `1px solid ${accentColor2}22`,
+                                            border: isPending2 ? '2px dashed #3b82f6' : `1px solid ${accentColor2}22`,
+                                            borderImage: isPending2 ? 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22%3E%3Crect width=%2210%22 height=%222%22 fill=%22%233b82f6%22/%3E%3C/svg%3E") 0 0 0 0' : 'unset',
                                             display:'flex', overflow:'hidden',
                                             position: 'relative',
-                                            animation: isPending2 ? 'borderRotate 3s linear infinite' : 'none',
-                                            backgroundClip: isPending2 ? 'padding-box' : 'unset',
+                                            boxShadow: isPending2 ? 'inset 0 0 0 2px rgba(59, 130, 246, 0.3), 0 0 12px rgba(59, 130, 246, 0.4)' : 'none',
                                           }}>
                                             {/* Franja lateral */}
                                             <div style={{

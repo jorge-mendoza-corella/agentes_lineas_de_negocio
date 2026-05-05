@@ -1,39 +1,19 @@
-version: '3.9'
-
 services:
-  # Next.js Dashboard (conecta directamente a Supabase remoto)
   dashboard:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: agentes-dashboard
-    environment:
-      NODE_ENV: production
-      # Supabase (remoto)
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
-      # APIs
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      GOOGLE_GEMINI_API_KEY: ${GOOGLE_GEMINI_API_KEY}
-      # App config
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-      NEXT_TELEMETRY_DISABLED: 1
+    env_file:
+      - apps/dashboard/.env.local
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
-      - ./apps/dashboard:/app/apps/dashboard
-      - /app/node_modules
+      - /home/srvsozu/.ssh/id_rsa:/app/.ssh/agent_key:ro
     networks:
       - agentes-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    restart: unless-stopped
 
-  # ALO — Infraestructura y Mantenimiento (este canal)
   alo:
     image: node:22-alpine
     container_name: alo-orchestrator
@@ -56,13 +36,7 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  # SEBAS — PM Global Operacional (Dashboard + Orquestación)
   sebas:
     image: node:22-alpine
     container_name: sebas-orchestrator
@@ -75,7 +49,6 @@ services:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       GOOGLE_GEMINI_API_KEY: ${GOOGLE_GEMINI_API_KEY}
-      TELEGRAM_BOT_TOKEN_SEBAS: ${TELEGRAM_BOT_TOKEN_SEBAS}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN_SEBAS}
       JORGE_CHAT_ID: ${JORGE_CHAT_ID}
     volumes:
@@ -86,27 +59,15 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  # Redis para cache local (opcional)
   redis:
     image: redis:7-alpine
     container_name: agentes-cache
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
       - agentes-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    restart: unless-stopped
 
 volumes:
   redis_data:

@@ -11,7 +11,7 @@ services:
     ports:
       - "3001:3000"
     volumes:
-      - /home/srvsozu/.ssh/id_rsa:/app/.ssh/agent_key:ro
+      - /home/srvsozu/.ssh/actions_key:/app/.ssh/agent_key:ro
     networks:
       - agentes-network
     restart: unless-stopped

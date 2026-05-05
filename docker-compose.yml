@@ -20,7 +20,7 @@ services:
     image: node:22-alpine
     container_name: alo-orchestrator
     working_dir: /app
-    command: sh -c "npm install --production --silent && node packages/pm-global-orchestrator.js"
+    command: sh -c "npm install --production && node packages/pm-global-orchestrator.js"
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       TZ: America/Mexico_City
@@ -44,7 +44,7 @@ services:
     image: node:22-alpine
     container_name: sebas-orchestrator
     working_dir: /app
-    command: sh -c "npm install --production --silent && node packages/sebas-orchestrator.js"
+    command: sh -c "npm install --production && node packages/sebas-orchestrator.js"
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       TZ: America/Mexico_City

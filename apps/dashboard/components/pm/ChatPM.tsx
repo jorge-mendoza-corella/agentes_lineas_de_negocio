@@ -212,6 +212,11 @@ export default function ChatPM({
   const [esFallback, setEsFallback] = useState(false);
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  function cancelarStream() {
+    abortRef.current?.abort('usuario');
+  }
 
   useEffect(() => {
     const supported = typeof window !== 'undefined' &&
@@ -355,11 +360,16 @@ export default function ChatPM({
       { id: idAgente, rol: 'agente', contenido: '', pendiente: true, created_at: new Date().toISOString() },
     ]);
 
+    const abortCtrl = new AbortController();
+    abortRef.current = abortCtrl;
+    const timeoutId = setTimeout(() => abortCtrl.abort('timeout'), 120_000);
+
     try {
       const base64 = await blobToBase64(blob);
       const res = await fetch('/api/pm-global', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortCtrl.signal,
         body: JSON.stringify({
           audio_base64: base64,
           audio_mime: mimeType,
@@ -431,14 +441,18 @@ export default function ChatPM({
         }
       }
     } catch (err) {
-      console.error('[ChatPM] enviarAudio error:', err);
-      const msg = err instanceof Error ? err.message : 'Error de conexión con el agente.';
-      setMensajes(prev => prev.map(m =>
-        m.id === idAgente
-          ? { ...m, contenido: `⚠️ ${msg}`, pendiente: false }
-          : m
-      ));
+      if ((err as Error).name !== 'AbortError') {
+        console.error('[ChatPM] enviarAudio error:', err);
+        const msg = err instanceof Error ? err.message : 'Error de conexión con el agente.';
+        setMensajes(prev => prev.map(m =>
+          m.id === idAgente
+            ? { ...m, contenido: `⚠️ ${msg}`, pendiente: false }
+            : m
+        ));
+      }
     } finally {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
       setIsStreaming(false);
       setMensajes(prev => prev.map(m =>
         m.id === idAgente ? { ...m, pendiente: false } : m
@@ -468,10 +482,15 @@ export default function ChatPM({
       { id: idAgente, rol: 'agente', contenido: '', pendiente: true, created_at: new Date().toISOString() },
     ]);
 
+    const abortCtrl = new AbortController();
+    abortRef.current = abortCtrl;
+    const timeoutId = setTimeout(() => abortCtrl.abort('timeout'), 120_000);
+
     try {
       const res = await fetch('/api/pm-global', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortCtrl.signal,
         body: JSON.stringify({
           mensaje: texto,
           adjuntos: adjuntosActuales.length > 0 ? adjuntosActuales.map(a => ({ tipo: a.tipo, nombre: a.nombre, mimeType: a.mimeType, base64: a.base64 })) : undefined,
@@ -538,14 +557,18 @@ export default function ChatPM({
         }
       }
     } catch (err) {
-      console.error('[ChatPM] enviar error:', err);
-      const msg = err instanceof Error ? err.message : 'Error de conexión con el agente.';
-      setMensajes(prev => prev.map(m =>
-        m.id === idAgente
-          ? { ...m, contenido: `⚠️ ${msg}`, pendiente: false }
-          : m
-      ));
+      if ((err as Error).name !== 'AbortError') {
+        console.error('[ChatPM] enviar error:', err);
+        const msg = err instanceof Error ? err.message : 'Error de conexión con el agente.';
+        setMensajes(prev => prev.map(m =>
+          m.id === idAgente
+            ? { ...m, contenido: `⚠️ ${msg}`, pendiente: false }
+            : m
+        ));
+      }
     } finally {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
       setIsStreaming(false);
       setMensajes(prev => prev.map(m =>
         m.id === idAgente ? { ...m, pendiente: false } : m
@@ -642,9 +665,18 @@ export default function ChatPM({
             </span>
           )}
           {isStreaming && (
-            <span className="flex items-center gap-1.5 text-xs text-green-600">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
-              Procesando...
+            <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-xs text-green-600">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
+                Procesando...
+              </span>
+              <button
+                onClick={cancelarStream}
+                title="Cancelar solicitud en curso"
+                className="text-[10px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+              >
+                Cancelar
+              </button>
             </span>
           )}
         </div>

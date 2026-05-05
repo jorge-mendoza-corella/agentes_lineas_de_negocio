@@ -392,6 +392,7 @@ async function ejecutarTool(
 // POST handler
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  console.log('[pm-global] POST received', new Date().toISOString());
   if (!process.env.ANTHROPIC_API_KEY && !process.env.GOOGLE_GEMINI_API_KEY) {
     return new Response(
       JSON.stringify({ type: 'error', message: 'No hay proveedor de IA configurado. Agrega ANTHROPIC_API_KEY o GOOGLE_GEMINI_API_KEY en .env.local' }),
@@ -541,6 +542,7 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      console.log('[pm-global] stream start', new Date().toISOString());
       function send(obj: object) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
       }

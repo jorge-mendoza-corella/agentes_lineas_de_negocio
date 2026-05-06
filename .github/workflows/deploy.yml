@@ -21,6 +21,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TELEGRAM_BOT_TOKEN_SEBAS: ${{ secrets.TELEGRAM_BOT_TOKEN_SEBAS }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
         run: |
           echo "=== Verificación de secrets críticos ==="
           echo "NEXT_PUBLIC_SUPABASE_URL : len=${#NEXT_PUBLIC_SUPABASE_URL}  prefix='${NEXT_PUBLIC_SUPABASE_URL:0:12}'"
@@ -28,8 +29,17 @@ jobs:
           echo "SUPABASE_SERVICE_ROLE_KEY : len=${#SUPABASE_SERVICE_ROLE_KEY}"
           echo "ANTHROPIC_API_KEY : len=${#ANTHROPIC_API_KEY}  prefix='${ANTHROPIC_API_KEY:0:7}'"
           echo "TELEGRAM_BOT_TOKEN_SEBAS : len=${#TELEGRAM_BOT_TOKEN_SEBAS}"
+          echo "NEXT_PUBLIC_APP_URL : '${NEXT_PUBLIC_APP_URL}'"
           if [ "${NEXT_PUBLIC_SUPABASE_URL:0:8}" != "https://" ]; then
             echo "❌ FATAL: NEXT_PUBLIC_SUPABASE_URL no comienza con https:// — valor actual empieza con '${NEXT_PUBLIC_SUPABASE_URL:0:8}'"
+            exit 1
+          fi
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "❌ FATAL: SUPABASE_SERVICE_ROLE_KEY está vacío"
+            exit 1
+          fi
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "❌ FATAL: ANTHROPIC_API_KEY está vacío"
             exit 1
           fi
           echo "✅ Secrets críticos verificados"
@@ -61,7 +71,12 @@ jobs:
 
           echo "✅ .env.docker created:"
           wc -l .env.docker
-          head -5 .env.docker
+          echo "--- primeras 5 líneas (solo nombres de vars) ---"
+          head -5 .env.docker | cut -d= -f1
+          echo "--- verificar que vars críticas no están pegadas ---"
+          grep -c '^NEXT_PUBLIC_SUPABASE_URL=' .env.docker || echo "WARN: NEXT_PUBLIC_SUPABASE_URL no encontrada"
+          grep -c '^SUPABASE_SERVICE_ROLE_KEY=' .env.docker || echo "WARN: SUPABASE_SERVICE_ROLE_KEY no encontrada"
+          grep -c '^ANTHROPIC_API_KEY=' .env.docker || echo "WARN: ANTHROPIC_API_KEY no encontrada"
 
       - name: Deploy to VPS via SSH
         env:
@@ -102,13 +117,26 @@ jobs:
 
           echo "🔍 Verificando vars críticas en .env.docker..."
           SUPABASE_URL_VAL=$(grep -E '^NEXT_PUBLIC_SUPABASE_URL=' .env.docker | cut -d= -f2-)
+          SRK_VAL=$(grep -E '^SUPABASE_SERVICE_ROLE_KEY=' .env.docker | cut -d= -f2-)
+          ANON_KEY_VAL=$(grep -E '^NEXT_PUBLIC_SUPABASE_ANON_KEY=' .env.docker | cut -d= -f2-)
           if [ -z "$SUPABASE_URL_VAL" ]; then
             echo "FATAL: NEXT_PUBLIC_SUPABASE_URL está vacío en .env.docker"
-            echo "Contenido actual (sin valores sensibles):"
             grep -v 'KEY\|TOKEN\|SECRET\|PASSWORD\|PASSPHRASE' .env.docker || true
             exit 1
           fi
-          echo "✅ NEXT_PUBLIC_SUPABASE_URL: $(echo $SUPABASE_URL_VAL | cut -c1-30)..."
+          if [ -z "$SRK_VAL" ]; then
+            echo "FATAL: SUPABASE_SERVICE_ROLE_KEY está vacío en .env.docker — probablemente pegada con otra var"
+            echo "Líneas alrededor de SERVICE_ROLE:"
+            grep -n 'SERVICE_ROLE\|SUPABASE_ANON' .env.docker | head -5
+            exit 1
+          fi
+          if [ -z "$ANON_KEY_VAL" ]; then
+            echo "FATAL: NEXT_PUBLIC_SUPABASE_ANON_KEY está vacío en .env.docker"
+            exit 1
+          fi
+          echo "✅ NEXT_PUBLIC_SUPABASE_URL: $(echo $SUPABASE_URL_VAL | cut -c1-35)..."
+          echo "✅ SUPABASE_SERVICE_ROLE_KEY: len=${#SRK_VAL}"
+          echo "✅ NEXT_PUBLIC_SUPABASE_ANON_KEY: len=${#ANON_KEY_VAL}"
 
           echo "🛑 Stopping containers..."
           docker-compose --env-file .env.docker down --remove-orphans || true

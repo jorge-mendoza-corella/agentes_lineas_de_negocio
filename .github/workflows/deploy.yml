@@ -32,6 +32,11 @@ jobs:
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN_SEBAS=${{ secrets.TELEGRAM_BOT_TOKEN_SEBAS }}
           TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          SSH_KEY_PASSPHRASE=${{ secrets.SSH_KEY_PASSPHRASE }}
+          SSH_SUDO_PASSWORD=${{ secrets.SSH_SUDO_PASSWORD }}
+          VPS_HOST=${{ secrets.SSH_HOST }}
+          VPS_USER=${{ secrets.SSH_USER }}
+          DASHBOARD_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
           EOF
 
           echo "✅ .env.docker created:"
@@ -70,6 +75,10 @@ jobs:
           echo "---"
           head -3 .env.docker
           echo "---"
+
+          echo "📝 Escribiendo apps/dashboard/.env.local..."
+          cp .env.docker apps/dashboard/.env.local
+          echo "SSH_KEY_PATH=/app/.ssh/agent_key" >> apps/dashboard/.env.local
 
           echo "🛑 Stopping containers..."
           docker-compose down --remove-orphans || true

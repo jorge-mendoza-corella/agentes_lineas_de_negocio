@@ -9,6 +9,45 @@ import * as os from 'os';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = any;
 
+// ── Estado paso-actual por tarea ──────────────────────────────────────────
+// Mantiene en memoria el paso actual (1-based) de cada tarea en ejecución.
+// Se usa para anotar paso_index en cada entrada de bitacora_actividad.
+const pasoActualPorTarea = new Map<string, number | null>();
+
+function parsePasosDePlan(plan: string | null | undefined): string[] {
+  if (!plan) return [];
+  const headerRe = /^===\s*PASO\s+(\d+)\s*[—–\-]\s*(.+?)\s*===\s*$/gim;
+  const headers: string[] = [];
+  let m;
+  while ((m = headerRe.exec(plan)) !== null) headers.push((m[2] ?? '').trim());
+  if (headers.length > 0) return headers;
+  return plan.replace(/^===.*===\s*$/gm, '').split('\n').map(l => l.trim())
+    .filter(l => /^\d+[\.\)\-]\s+\S/.test(l) || /^\*\*\d+[\.\)]\*?\*?\s+\S/.test(l) || /^[-*•]\s+\S/.test(l) || /^Paso\s+\d+/i.test(l) || /^Step\s+\d+/i.test(l))
+    .map(l => l.replace(/^\d+[\.\)\-]\s*/, '').replace(/^\*\*\d+[\.\)]\*?\*?\s*/, '').replace(/^[-*•]\s*/, '').replace(/^Paso\s+\d+[\.\:\-]?\s*/i, '').replace(/^Step\s+\d+[\.\:\-]?\s*/i, '').replace(/\*\*/g, '').trim())
+    .filter(l => l.length > 4);
+}
+
+function detectarPasoEnTexto(texto: string, totalPasos: number): number | null {
+  if (!texto) return null;
+  const m = texto.match(/(?:iniciando|comenzando|empezando|ejecutando|aplicando|paso|step)\s*#?\s*(\d+)/i);
+  if (!m || !m[1]) return null;
+  const n = parseInt(m[1], 10);
+  if (!Number.isFinite(n) || n < 1) return null;
+  if (totalPasos > 0 && n > totalPasos) return null;
+  return n;
+}
+
+async function bitacoraInsert(
+  db: DB, agente: string, accion: string, tareaId: string,
+  pasoOverride?: number | null,
+): Promise<void> {
+  const pasoActual = pasoOverride !== undefined ? pasoOverride : (pasoActualPorTarea.get(tareaId) ?? null);
+  await db.from('bitacora_actividad').insert({
+    agente, accion, tarea_id: tareaId,
+    paso_index: pasoActual,
+  });
+}
+
 const AGENT_DESCRIPTIONS: Record<string, string> = {
   'dev-devops':        'especialista en DevOps y CI/CD. Configuras pipelines con GitHub Actions, deploys a Firebase Hosting / Cloud Run / Supabase CLI, y gestionas secretos y entornos.',
   'dev-backend':       'especialista en backend. Implementas Supabase Edge Functions, Firebase Functions, APIs REST e integraciones con Postmark, EvolutionAPI, FacturAPI, Mifiel y n8n.',
@@ -327,7 +366,14 @@ async function handleTool(
 ): Promise<{ resultado: string; terminar: boolean }> {
   if (nombre === 'log_progreso') {
     const accion = input.detalle ? `${input.paso}\n${input.detalle}` : input.paso;
-    await db.from('bitacora_actividad').insert({ agente, accion, tarea_id: tareaId });
+    // Detectar transiciones de paso del plan a partir del texto
+    try {
+      const { data: tareaRow } = await db.from('tareas').select('plan_ejecucion').eq('id', tareaId).maybeSingle() as { data: { plan_ejecucion: string | null } | null };
+      const pasos = parsePasosDePlan(tareaRow?.plan_ejecucion);
+      const detectado = detectarPasoEnTexto(accion, pasos.length);
+      if (detectado !== null) pasoActualPorTarea.set(tareaId, detectado);
+    } catch {}
+    await bitacoraInsert(db, agente, accion, tareaId);
     return { resultado: JSON.stringify({ ok: true }), terminar: false };
   }
 
@@ -339,7 +385,7 @@ async function handleTool(
         completado_en: new Date().toISOString(),
       }).eq('id', tareaId),
       db.from('avatares').update({ estado_animacion: 'celebrando' }).eq('agente_nombre', agente),
-      db.from('bitacora_actividad').insert({ agente, accion: `✅ Completado: ${input.resumen}`, tarea_id: tareaId }),
+      bitacoraInsert(db, agente, `✅ Completado: ${input.resumen}`, tareaId),
     ]);
     setTimeout(() => {
       db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', agente)
@@ -357,11 +403,7 @@ async function handleTool(
       const resumenCorto  = (input.resumen as string).slice(0, 200);
 
       await Promise.all([
-        db.from('bitacora_actividad').insert({
-          agente: pmResponsable,
-          accion: `🎉 ${agente} completó su tarea.\n• Tarea: ${descTarea}\n• Resumen: ${resumenCorto}\n→ Puedes informar al stakeholder.`,
-          tarea_id: tareaId,
-        }),
+        bitacoraInsert(db, pmResponsable, `🎉 ${agente} completó su tarea.\n• Tarea: ${descTarea}\n• Resumen: ${resumenCorto}\n→ Puedes informar al stakeholder.`, tareaId),
         db.from('avatares').update({ estado_animacion: 'hablando' }).eq('agente_nombre', pmResponsable),
       ]);
       setTimeout(() => {
@@ -370,6 +412,7 @@ async function handleTool(
       }, 6000);
     } catch {}
 
+    pasoActualPorTarea.delete(tareaId);
     return { resultado: JSON.stringify({ ok: true }), terminar: true };
   }
 
@@ -378,7 +421,7 @@ async function handleTool(
     await Promise.all([
       db.from('tareas').update({ estado: 'pendiente', notas: nota }).eq('id', tareaId),
       db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', agente),
-      db.from('bitacora_actividad').insert({ agente, accion: `🚧 Bloqueante: ${input.problema} — ${input.accion_requerida}`, tarea_id: tareaId }),
+      bitacoraInsert(db, agente, `🚧 Bloqueante: ${input.problema} — ${input.accion_requerida}`, tareaId),
     ]);
 
     // El PM Global nunca se auto-asigna para gestionar su propio bloqueante — notifica al usuario y para
@@ -447,11 +490,7 @@ ${planOriginal}
 
       const pmTaskId = (insertResult as { data: { id: string } | null }).data?.id;
       if (pmTaskId) {
-        await db.from('bitacora_actividad').insert({
-          agente: pmResponsable,
-          accion: `🚨 ${agente} reportó un bloqueante — iniciando análisis automático.\n• Problema: ${input.problema}\n• Requiere: ${input.accion_requerida}`,
-          tarea_id: pmTaskId,
-        });
+        await bitacoraInsert(db, pmResponsable, `🚨 ${agente} reportó un bloqueante — iniciando análisis automático.\n• Problema: ${input.problema}\n• Requiere: ${input.accion_requerida}`, pmTaskId);
         // Fire-and-forget: no esperamos que el PM termine para continuar
         ejecutarEspecialista(pmTaskId, db).catch((e: unknown) => {
           console.error('[especialista] auto-trigger PM error:', e);
@@ -497,11 +536,7 @@ ${planOriginal}
         metadata: { automatico: true, fuente: agente },
       });
 
-      await db.from('bitacora_actividad').insert({
-        agente,
-        accion: `📬 Mensaje enviado al usuario: ${mensaje.slice(0, 100)}`,
-        tarea_id: tareaId,
-      });
+      await bitacoraInsert(db, agente, `📬 Mensaje enviado al usuario: ${mensaje.slice(0, 100)}`, tareaId);
     } catch (e) {
       console.error('[notificar_usuario] error:', e);
     }
@@ -520,11 +555,7 @@ ${planOriginal}
 
     await db.from('tareas').update(updates).eq('id', input.tarea_id);
     const camposActualizados = Object.keys(updates).join(', ');
-    await db.from('bitacora_actividad').insert({
-      agente,
-      accion: `📝 Tarea ${input.tarea_id} actualizada (${camposActualizados})`,
-      tarea_id: tareaId,
-    });
+    await bitacoraInsert(db, agente, `📝 Tarea ${input.tarea_id} actualizada (${camposActualizados})`, tareaId);
     return { resultado: JSON.stringify({ ok: true, actualizados: camposActualizados }), terminar: false };
   }
 
@@ -543,11 +574,7 @@ ${planOriginal}
     if (error) return { resultado: JSON.stringify({ error: error.message }), terminar: false };
 
     await Promise.all([
-      db.from('bitacora_actividad').insert({
-        agente,
-        accion: `📋 Subtarea delegada a ${agente_asignado}: ${descripcion.slice(0, 120)}`,
-        tarea_id: tareaId,
-      }),
+      bitacoraInsert(db, agente, `📋 Subtarea delegada a ${agente_asignado}: ${descripcion.slice(0, 120)}`, tareaId),
       db.from('avatares').update({ estado_animacion: 'caminando' }).eq('agente_nombre', agente_asignado),
     ]);
 
@@ -585,21 +612,13 @@ ${planOriginal}
     }
 
     // Log del comando ejecutado (sin contraseña)
-    await db.from('bitacora_actividad').insert({
-      agente,
-      accion: `🖥️ SSH [${host}]: ${comando.slice(0, 200)}`,
-      tarea_id: tareaId,
-    });
+    await bitacoraInsert(db, agente, `🖥️ SSH [${host}]: ${comando.slice(0, 200)}`, tareaId);
 
     try {
       const { stdout, stderr, exitCode } = await ejecutarSSH(host, usuario, password, comando, timeoutMs);
       const salida = stdout.slice(0, 2000) + (stderr ? `\n[STDERR] ${stderr.slice(0, 500)}` : '');
 
-      await db.from('bitacora_actividad').insert({
-        agente,
-        accion: `📤 SSH resultado (exit ${exitCode}):\n${salida}`,
-        tarea_id: tareaId,
-      });
+      await bitacoraInsert(db, agente, `📤 SSH resultado (exit ${exitCode}):\n${salida}`, tareaId);
 
       return {
         resultado: JSON.stringify({ exitCode, stdout: stdout.slice(0, 3000), stderr: stderr.slice(0, 500) }),
@@ -607,11 +626,7 @@ ${planOriginal}
       };
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
-      await db.from('bitacora_actividad').insert({
-        agente,
-        accion: `❌ SSH error: ${errMsg}`,
-        tarea_id: tareaId,
-      });
+      await bitacoraInsert(db, agente, `❌ SSH error: ${errMsg}`, tareaId);
       return { resultado: JSON.stringify({ error: errMsg }), terminar: false };
     }
   }
@@ -716,14 +731,12 @@ export async function ejecutarEspecialista(tareaId: string, db: DB, prevContexto
   const modelo = tieneAnthropic ? 'claude-sonnet-4-6' : 'gemini-2.5-flash';
 
   // Marcar en progreso + animar avatar + log de inicio
+  // Reset paso actual al inicio (pasos del plan se detectarán por log_progreso)
+  pasoActualPorTarea.set(tareaId, prevContexto ? (pasoActualPorTarea.get(tareaId) ?? null) : null);
   await Promise.all([
     db.from('tareas').update({ estado: 'en_progreso', iniciado_en: new Date().toISOString() }).eq('id', tareaId),
     db.from('avatares').update({ estado_animacion: 'trabajando' }).eq('agente_nombre', agente),
-    db.from('bitacora_actividad').insert({
-      agente,
-      accion: prevContexto ? `⏯️ Reanudando con ${modelo}: ${descripcion}` : `🤖 Iniciando con ${modelo}: ${descripcion}`,
-      tarea_id: tareaId,
-    }),
+    bitacoraInsert(db, agente, prevContexto ? `⏯️ Reanudando con ${modelo}: ${descripcion}` : `🤖 Iniciando con ${modelo}: ${descripcion}`, tareaId),
   ]);
 
   const resumptionSection = prevContexto
@@ -829,11 +842,7 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
         const esCreditError = msg.includes('credit') || msg.includes('401') || msg.includes('403');
         if (!esCreditError || !tieneGemini) throw claudeErr;
 
-        await db.from('bitacora_actividad').insert({
-          agente,
-          accion: `⚠️ Anthropic sin créditos — cambiando a gemini-2.5-flash`,
-          tarea_id: tareaId,
-        });
+        await bitacoraInsert(db, agente, `⚠️ Anthropic sin créditos — cambiando a gemini-2.5-flash`, tareaId);
       }
     }
 
@@ -848,11 +857,7 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
       } catch (geminiErr: unknown) {
         if (!esErrorDeRed(geminiErr) || intento === MAX_REINTENTOS - 1) throw geminiErr;
         const delaySeg = (intento + 1) * 5;
-        await db.from('bitacora_actividad').insert({
-          agente,
-          accion: `⚠️ Gemini error de red (intento ${intento + 1}/${MAX_REINTENTOS}), reintentando en ${delaySeg}s…`,
-          tarea_id: tareaId,
-        });
+        await bitacoraInsert(db, agente, `⚠️ Gemini error de red (intento ${intento + 1}/${MAX_REINTENTOS}), reintentando en ${delaySeg}s…`, tareaId);
         await new Promise(r => setTimeout(r, delaySeg * 1000));
       }
     }
@@ -860,11 +865,7 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
   } catch (e) {
     console.error(`[especialista:${agente}] error:`, e);
     const msg = e instanceof Error ? e.message : String(e);
-    await db.from('bitacora_actividad').insert({
-      agente,
-      accion: `❌ Error en ejecución: ${msg}`,
-      tarea_id: tareaId,
-    });
+    await bitacoraInsert(db, agente, `❌ Error en ejecución: ${msg}`, tareaId);
     // Si es un error transitorio, regresar a pendiente para que el usuario pueda reanudar
     if (esErrorDeRed(e) || msg.includes('credit') || msg.includes('overloaded')) {
       await db.from('tareas').update({

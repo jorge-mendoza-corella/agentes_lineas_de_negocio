@@ -438,7 +438,9 @@ export async function POST(req: NextRequest) {
     );
   }
   if (!user) return new Response('Unauthorized', { status: 401 });
+  console.log('[pm-global] auth ok, user.id=', user.id, 'rol=', perfil?.rol);
   if (!perfil || !['superadmin', 'plataforma_admin'].includes(perfil.rol)) {
+    console.error('[pm-global] FORBIDDEN: rol=', perfil?.rol, 'no está en [superadmin, plataforma_admin]');
     return new Response('Forbidden', { status: 403 });
   }
 
@@ -490,21 +492,32 @@ export async function POST(req: NextRequest) {
   // Crear o retomar conversación
   const tituloMensaje = mensajeTexto || (tieneAdjuntos ? '[Archivo adjunto]' : '');
   let convId = body.conversacion_id ?? null;
+  console.log('[pm-global] step: crear/retomar conversación, convId=', convId ?? 'nueva');
   if (!convId) {
-    const { data, error: errConv } = await db.from('conversaciones_pm').insert({
-      usuario_id: user.id,
-      titulo: tituloMensaje.slice(0, 80),
-      empresa_id: body.empresa_id ?? null,
-      proyecto_id: body.proyecto_id ?? null,
-    }).select('id').single();
-    if (errConv) console.error('[pm-global] crear conversación error:', errConv);
-    convId = data?.id ?? null;
+    try {
+      const { data, error: errConv } = await db.from('conversaciones_pm').insert({
+        usuario_id: user.id,
+        titulo: tituloMensaje.slice(0, 80),
+        empresa_id: body.empresa_id ?? null,
+        proyecto_id: body.proyecto_id ?? null,
+      }).select('id').single();
+      if (errConv) console.error('[pm-global] crear conversación error:', errConv);
+      convId = data?.id ?? null;
+    } catch (e) {
+      console.error('[pm-global] THROW crear conversación:', e);
+      return new Response(JSON.stringify({ type: 'error', message: `Error creando conversación: ${String(e)}` }), { status: 500 });
+    }
   }
   if (!convId) return new Response(JSON.stringify({ type: 'error', message: 'Error creando conversación en DB' }), { status: 500 });
   const conversacionId = convId;
+  console.log('[pm-global] step: conversación ok, id=', conversacionId);
 
   // Auto-animar PM Global al recibir la solicitud (no depende de que el AI lo recuerde)
-  await db.from('avatares').update({ estado_animacion: 'trabajando' }).eq('agente_nombre', 'pm-global');
+  try {
+    await db.from('avatares').update({ estado_animacion: 'trabajando' }).eq('agente_nombre', 'pm-global');
+  } catch (e) {
+    console.warn('[pm-global] avatares update warn (non-fatal):', e);
+  }
 
   // Guardar mensaje con referencia a adjuntos cuando no hay texto
   const contenidoGuardado = mensajeTexto
@@ -512,22 +525,30 @@ export async function POST(req: NextRequest) {
       ? adjuntosData.map((a: { nombre: string }) => `[${a.nombre}]`).join(' ')
       : '');
 
-  await db.from('mensajes_pm').insert({
-    conversacion_id: conversacionId,
-    rol: 'usuario',
-    contenido: contenidoGuardado,
-    metadata: {
-      usuario_nombre: perfil.nombre,
-      ...(tieneAudio ? { origen: 'audio', audio_mime: body.audio_mime } : {}),
-      ...(adjuntosData.length > 0 ? { adjuntos: adjuntosData.map((a: { nombre: string; mimeType: string }) => ({ nombre: a.nombre, mimeType: a.mimeType })) } : {}),
-    },
-  });
+  console.log('[pm-global] step: guardando mensaje usuario...');
+  try {
+    const { error: errMsg } = await db.from('mensajes_pm').insert({
+      conversacion_id: conversacionId,
+      rol: 'usuario',
+      contenido: contenidoGuardado,
+      metadata: {
+        usuario_nombre: perfil.nombre,
+        ...(tieneAudio ? { origen: 'audio', audio_mime: body.audio_mime } : {}),
+        ...(adjuntosData.length > 0 ? { adjuntos: adjuntosData.map((a: { nombre: string; mimeType: string }) => ({ nombre: a.nombre, mimeType: a.mimeType })) } : {}),
+      },
+    });
+    if (errMsg) console.error('[pm-global] guardar mensaje error:', errMsg);
+  } catch (e) {
+    console.error('[pm-global] THROW guardar mensaje:', e);
+  }
 
-  const { data: historial } = await db.from('mensajes_pm')
+  console.log('[pm-global] step: cargando historial...');
+  const { data: historial, error: errHistorial } = await db.from('mensajes_pm')
     .select('rol,contenido')
     .eq('conversacion_id', conversacionId)
     .order('created_at', { ascending: true })
     .limit(20);
+  if (errHistorial) console.error('[pm-global] historial error:', errHistorial);
 
   // Historial en formato Anthropic — filtrar contenidos vacíos para evitar errores de API
   const historialAnthropic: Anthropic.MessageParam[] = (historial ?? [])
@@ -553,6 +574,7 @@ export async function POST(req: NextRequest) {
   }
 
   const encoder = new TextEncoder();
+  console.log('[pm-global] step: buildSystemPrompt...');
   const systemPrompt = buildSystemPrompt(perfil.nombre ?? 'Usuario', perfil.rol, {
     empresaNombre,
     empresaId: body.empresa_id,
@@ -560,6 +582,7 @@ export async function POST(req: NextRequest) {
     proyectoId: body.proyecto_id,
   });
   const MAX = 5;
+  console.log('[pm-global] step: creando ReadableStream...');
 
   const stream = new ReadableStream({
     async start(controller) {

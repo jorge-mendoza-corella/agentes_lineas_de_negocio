@@ -376,7 +376,7 @@ async function procesarConClaude(chatId, nombreUsuario, texto) {
       system: systemPrompt,
       messages,
       tools: TOOLS,
-    });
+    }, { timeout: 60_000 });
 
     const toolUses = resp.content.filter(b => b.type === 'tool_use');
 

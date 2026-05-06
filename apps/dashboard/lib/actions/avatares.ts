@@ -1,6 +1,5 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { ejecutarEspecialista, makeDb } from '@/lib/agent/especialista';
 
@@ -196,60 +195,60 @@ async function verificarTareasEquipo(pmNombre: string, db: any): Promise<void> {
 
 // ── Exportadas ────────────────────────────────────────────────────────────────
 
-export async function moverAvatarADescanso(agenteNombre: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No autenticado');
-
+export async function moverAvatarADescanso(agenteNombre: string): Promise<{ ok: boolean; error?: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = makeDb() as any;
+  try {
+    // Pausar tareas en_progreso → pendiente para retomarse con historial al volver
+    const { data: enProgreso } = await db
+      .from('tareas')
+      .select('id, descripcion')
+      .eq('agente_asignado', agenteNombre)
+      .eq('estado', 'en_progreso');
 
-  // Pausar tareas en_progreso → pendiente para retomarse con historial al volver
-  const { data: enProgreso } = await db
-    .from('tareas')
-    .select('id, descripcion')
-    .eq('agente_asignado', agenteNombre)
-    .eq('estado', 'en_progreso');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const t of ((enProgreso ?? []) as any[])) {
+      await db.from('tareas').update({ estado: 'pendiente', iniciado_en: null }).eq('id', t.id);
+      await db.from('bitacora_actividad').insert({
+        agente: agenteNombre,
+        accion: `⏸️ Tarea pausada — se retomará desde el último punto de progreso al volver.`,
+        tarea_id: t.id,
+      });
+    }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const t of ((enProgreso ?? []) as any[])) {
-    await db.from('tareas').update({ estado: 'pendiente', iniciado_en: null }).eq('id', t.id);
-    await db.from('bitacora_actividad').insert({
-      agente: agenteNombre,
-      accion: `⏸️ Tarea pausada — se retomará desde el último punto de progreso al volver.`,
-      tarea_id: t.id,
-    });
+    await db.from('avatares')
+      .update({ estado_animacion: 'idle' })
+      .eq('agente_nombre', agenteNombre);
+
+    revalidatePath('/superadmin/sims');
+    return { ok: true };
+  } catch (e) {
+    console.error('[moverAvatarADescanso]', e);
+    return { ok: false, error: String(e) };
   }
-
-  await db.from('avatares')
-    .update({ estado_animacion: 'idle' })
-    .eq('agente_nombre', agenteNombre);
-
-  revalidatePath('/superadmin/sims');
 }
 
 export async function reanudarTrabajo(agenteNombre: string): Promise<boolean> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No autenticado');
-
   const db = makeDb();
+  try {
+    // Si es PM, briefear al equipo en background
+    if (agenteNombre === 'pm-global' || agenteNombre === 'dev-pm') {
+      verificarTareasEquipo(agenteNombre, db).catch(console.error);
+    }
 
-  // Si es PM, briefear al equipo en background
-  if (agenteNombre === 'pm-global' || agenteNombre === 'dev-pm') {
-    verificarTareasEquipo(agenteNombre, db).catch(console.error);
+    const result = await _reanudarAgente(agenteNombre, db);
+
+    if (!result) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).from('avatares')
+        .update({ estado_animacion: 'idle' })
+        .eq('agente_nombre', agenteNombre);
+    }
+
+    revalidatePath('/superadmin/sims');
+    return result;
+  } catch (e) {
+    console.error('[reanudarTrabajo]', e);
+    return false;
   }
-
-  const result = await _reanudarAgente(agenteNombre, db);
-
-  if (!result) {
-    // Sin tareas — queda en idle
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as any).from('avatares')
-      .update({ estado_animacion: 'idle' })
-      .eq('agente_nombre', agenteNombre);
-  }
-
-  revalidatePath('/superadmin/sims');
-  return result;
 }

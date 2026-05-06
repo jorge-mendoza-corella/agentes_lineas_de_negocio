@@ -67,6 +67,7 @@ jobs:
           VPS_HOST=${{ secrets.SSH_HOST }}
           VPS_USER=${{ secrets.SSH_USER }}
           DASHBOARD_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
+          WATCHDOG_TOKEN=${{ secrets.WATCHDOG_TOKEN }}
           EOF
 
           echo "✅ .env.docker created:"

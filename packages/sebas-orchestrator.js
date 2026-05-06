@@ -14,13 +14,16 @@ if (!token) { console.error('[SEBAS] FATAL: TELEGRAM_BOT_TOKEN_SEBAS no configur
 if (!anthropicKey) { console.error('[SEBAS] FATAL: ANTHROPIC_API_KEY no configurado'); process.exit(1); }
 
 const bot = new TelegramBot(token, { polling: true });
-const supabase = createClient(supabaseUrl || '', supabaseKey || '');
+const supabase = (supabaseUrl && supabaseKey)
+  ? createClient(supabaseUrl, supabaseKey)
+  : null;
 const client = new Anthropic({ apiKey: anthropicKey });
 
 console.log('🎯 SEBAS PM Global iniciando...');
 console.log(`📱 Token: ${token ? token.slice(0, 10) + '...' : 'NO configurado ❌'}`);
 console.log(`🔗 Supabase: ${supabaseUrl ? 'configurado ✅' : 'NO configurado ❌'}`);
 console.log(`🧠 Anthropic: ${anthropicKey ? 'configurado ✅' : 'NO configurado ❌'}`);
+if (!supabase) console.warn('[SEBAS] ⚠️  Supabase no configurado — tools de BD no disponibles');
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -246,6 +249,7 @@ const TOOLS = [
 // ── Ejecución de tools ────────────────────────────────────────────────────────
 
 async function ejecutarTool(nombre, input) {
+  if (!supabase) return JSON.stringify({ error: 'Supabase no configurado — verifica NEXT_PUBLIC_SUPABASE_URL en el entorno.' });
   try {
     switch (nombre) {
       case 'log_bitacora': {

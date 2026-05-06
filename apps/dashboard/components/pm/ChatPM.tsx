@@ -59,7 +59,7 @@ async function readHttpError(res: Response): Promise<string> {
 
 function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return generateId();
+    return crypto.randomUUID();
   }
   // Fallback para contextos no-HTTPS (HTTP directo)
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {

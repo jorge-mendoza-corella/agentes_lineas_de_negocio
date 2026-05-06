@@ -91,9 +91,9 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          echo "📤 Transferring .env.docker to VPS..."
-          scp -v -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-            .env.docker "$SSH_USER@$SSH_HOST:/home/srvsozu/.openclaw/workspace/agentes_lineas_de_negocio/.env.docker"
+          echo "📤 Transferring .env.docker to VPS (en /tmp para sobrevivir el git reset)..."
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            .env.docker "$SSH_USER@$SSH_HOST:/tmp/agentes_env.docker"
 
           echo "🚀 Redeploying containers..."
           ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=60 "$SSH_USER@$SSH_HOST" << 'SSHEOF'
@@ -105,10 +105,11 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-          echo "📄 Checking .env.docker:"
+          echo "📄 Restaurando .env.docker desde /tmp (git reset lo sobreescribió con placeholders)..."
+          cp /tmp/agentes_env.docker .env.docker
           ls -lh .env.docker
           echo "---"
-          head -3 .env.docker
+          head -3 .env.docker | cut -d= -f1
           echo "---"
 
           echo "📝 Escribiendo apps/dashboard/.env.local..."

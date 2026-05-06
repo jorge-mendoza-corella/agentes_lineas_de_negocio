@@ -17,6 +17,7 @@ interface Tarea   {
   id: string; agente_asignado: string; descripcion: string; estado: string;
   notas: string | null; plan_ejecucion?: string | null;
   proyecto_id?: string | null;
+  creado_en?: string | null;
   proyecto?: { nombre: string; empresa_id: string; empresa?: { nombre: string } | null } | null;
 }
 interface Props   { avatoresIniciales: Avatar[]; bitacoraInicial: Entrada[]; tareasIniciales: Tarea[] }
@@ -1412,6 +1413,12 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                             <p className="text-[10px] capitalize font-medium" style={{
                               color: t.estado === 'cancelada' ? '#ef4444' : t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? '#3b82f6' : (t.notas && /^error/i.test(t.notas) ? '#ef4444' : '#eab308'),
                             }}>{t.estado.replace('_',' ')}</p>
+                            {t.creado_en && (
+                              <span className="text-[9px] text-slate-600">
+                                {new Date(t.creado_en).toLocaleDateString('es-MX', { day:'numeric', month:'short' })}{' '}
+                                {new Date(t.creado_en).toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' })}
+                              </span>
+                            )}
                             {total > 0 && (
                               <span className="text-[9px]">
                                 <span style={{ color:'#22c55e' }}>✓ {doneCount}</span>

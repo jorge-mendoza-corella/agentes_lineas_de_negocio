@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Llamar endpoint /api/watchdog-tareas
         env:
-          DASHBOARD_URL:   ${{ secrets.DASHBOARD_URL }}
+          DASHBOARD_URL:   ${{ secrets.NEXT_PUBLIC_APP_URL }}
           WATCHDOG_TOKEN:  ${{ secrets.WATCHDOG_TOKEN }}
         run: |
           if [ -z "$DASHBOARD_URL" ] || [ -z "$WATCHDOG_TOKEN" ]; then

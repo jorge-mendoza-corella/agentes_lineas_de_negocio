@@ -30,8 +30,8 @@ jobs:
           echo "ANTHROPIC_API_KEY : len=${#ANTHROPIC_API_KEY}  prefix='${ANTHROPIC_API_KEY:0:7}'"
           echo "TELEGRAM_BOT_TOKEN_SEBAS : len=${#TELEGRAM_BOT_TOKEN_SEBAS}"
           echo "NEXT_PUBLIC_APP_URL : '${NEXT_PUBLIC_APP_URL}'"
-          if [ "${NEXT_PUBLIC_SUPABASE_URL:0:8}" != "https://" ]; then
-            echo "❌ FATAL: NEXT_PUBLIC_SUPABASE_URL no comienza con https:// — valor actual empieza con '${NEXT_PUBLIC_SUPABASE_URL:0:8}'"
+          if [ "${NEXT_PUBLIC_SUPABASE_URL:0:7}" != "http://" ] && [ "${NEXT_PUBLIC_SUPABASE_URL:0:8}" != "https://" ]; then
+            echo "❌ FATAL: NEXT_PUBLIC_SUPABASE_URL debe comenzar con http:// o https:// — valor actual empieza con '${NEXT_PUBLIC_SUPABASE_URL:0:8}'"
             exit 1
           fi
           if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then

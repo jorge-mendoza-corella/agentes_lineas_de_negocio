@@ -1398,7 +1398,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                       }}>
                       <div className="flex items-start gap-3 p-3">
                         <span className="mt-1.5 w-2 h-2 rounded-full shrink-0 flex-none" style={{
-                          background: t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? '#3b82f6' : (t.notas && /^error/i.test(t.notas) ? '#ef4444' : '#eab308'),
+                          background: t.estado === 'cancelada' ? '#ef4444' : t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? '#3b82f6' : (t.notas && /^error/i.test(t.notas) ? '#ef4444' : '#eab308'),
                         }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-slate-200 leading-snug">{t.descripcion}</p>
@@ -1410,7 +1410,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                           )}
                           <div className="flex items-center flex-wrap gap-2 mt-0.5">
                             <p className="text-[10px] capitalize font-medium" style={{
-                              color: t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? '#3b82f6' : (t.notas && /^error/i.test(t.notas) ? '#ef4444' : '#eab308'),
+                              color: t.estado === 'cancelada' ? '#ef4444' : t.estado === 'completada' ? '#22c55e' : t.estado === 'en_progreso' ? '#3b82f6' : (t.notas && /^error/i.test(t.notas) ? '#ef4444' : '#eab308'),
                             }}>{t.estado.replace('_',' ')}</p>
                             {total > 0 && (
                               <span className="text-[9px]">

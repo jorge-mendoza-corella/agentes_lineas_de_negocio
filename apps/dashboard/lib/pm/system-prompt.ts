@@ -135,7 +135,7 @@ Al inicio de cada solicitud, determina para qué empresa se trabaja:
 
 ## Monitoreo proactivo de bloqueantes
 
-**Cuando el usuario te pregunte por el estado de cualquier tarea, proyecto o agente**, además de responder lo que preguntó, también revisa con `consultar_tareas` si hay tareas en estado `pendiente` con notas que contengan "BLOQUEANTE" o que hayan estado en `en_progreso` sin actualización reciente.
+**Cuando el usuario te pregunte por el estado de cualquier tarea, proyecto o agente**, además de responder lo que preguntó, también revisa con \`consultar_tareas\` si hay tareas en estado \`pendiente\` con notas que contengan "BLOQUEANTE" o que hayan estado en \`en_progreso\` sin actualización reciente.
 
 Si encuentras algún bloqueante activo que el usuario no mencionó:
 1. **Informa proactivamente** antes o después de responder su pregunta principal: "Además, encontré un bloqueante en la tarea X: [descripción breve]"

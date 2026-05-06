@@ -21,6 +21,8 @@ services:
     container_name: alo-orchestrator
     working_dir: /app
     command: sh -c "npm install --production && node packages/pm-global-orchestrator.js"
+    env_file:
+      - .env.docker
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       TZ: America/Mexico_City
@@ -45,6 +47,8 @@ services:
     container_name: sebas-orchestrator
     working_dir: /app
     command: sh -c "npm install --production && node packages/sebas-orchestrator.js"
+    env_file:
+      - .env.docker
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       TZ: America/Mexico_City
@@ -55,6 +59,7 @@ services:
       GOOGLE_GEMINI_API_KEY: ${GOOGLE_GEMINI_API_KEY}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN_SEBAS}
       JORGE_CHAT_ID: ${JORGE_CHAT_ID}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
     volumes:
       - .:/app
       - sebas_node_modules:/app/node_modules

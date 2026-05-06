@@ -26,7 +26,7 @@ interface TareaAtascada {
   descripcion: string;
   estado: string;
   notas: string | null;
-  updated_at: string | null;
+  creado_en: string | null;
   iniciado_en: string | null;
   watchdog_alertado_en: string | null;
 }
@@ -57,16 +57,18 @@ export async function POST(req: Request) {
   const corteAlert  = new Date(ahora.getTime() - UMBRAL_MIN_REALERTAR    * 60_000).toISOString();
 
   // ── Tareas candidatas ───────────────────────────────────────────────────
+  // La tabla `tareas` no tiene `updated_at` — usamos `creado_en` como filtro grueso
+  // y la lógica posterior con bitácora hace el filtro fino.
   // 1) estado en pendiente/en_progreso
-  // 2) updated_at < corte de inactividad (15 min)
+  // 2) creado_en < corte de inactividad (15 min — descartamos tareas recién creadas)
   // 3) watchdog_alertado_en es null o es < corte de re-alerta (1h)
   const { data: candidatas, error: errCand } = await sb
     .from('tareas')
-    .select('id, agente_asignado, descripcion, estado, notas, updated_at, iniciado_en, watchdog_alertado_en')
+    .select('id, agente_asignado, descripcion, estado, notas, creado_en, iniciado_en, watchdog_alertado_en')
     .in('estado', ['pendiente', 'en_progreso'])
-    .lt('updated_at', corteInact)
+    .lt('creado_en', corteInact)
     .or(`watchdog_alertado_en.is.null,watchdog_alertado_en.lt.${corteAlert}`)
-    .order('updated_at', { ascending: true })
+    .order('creado_en', { ascending: true })
     .limit(MAX_TAREAS_POR_EJECUCION);
 
   if (errCand) {
@@ -92,10 +94,12 @@ export async function POST(req: Request) {
     if (!ultActividad.has(row.tarea_id)) ultActividad.set(row.tarea_id, row.creado_en);
   }
 
+  // Última actividad real = max(última bitácora, iniciado_en, creado_en)
   const atascadasReales = tareas.filter(t => {
     const ultBitTarea = ultActividad.get(t.id);
-    const ultMov = ultBitTarea && t.updated_at && ultBitTarea > t.updated_at ? ultBitTarea : t.updated_at;
-    if (!ultMov) return true;
+    const candidatos = [ultBitTarea, t.iniciado_en, t.creado_en].filter(Boolean) as string[];
+    if (candidatos.length === 0) return true;
+    const ultMov = candidatos.reduce((max, c) => (c > max ? c : max));
     return ultMov < corteInact;
   });
 
@@ -137,7 +141,10 @@ export async function POST(req: Request) {
   // ── Notificar cada tarea atascada ──────────────────────────────────────
   const notificadas: string[] = [];
   for (const t of atascadasReales) {
-    const minInact = t.updated_at ? Math.round((ahora.getTime() - new Date(t.updated_at).getTime()) / 60_000) : null;
+    const ultBitTarea = ultActividad.get(t.id);
+    const candidatos = [ultBitTarea, t.iniciado_en, t.creado_en].filter(Boolean) as string[];
+    const ultMov = candidatos.length > 0 ? candidatos.reduce((max, c) => (c > max ? c : max)) : null;
+    const minInact = ultMov ? Math.round((ahora.getTime() - new Date(ultMov).getTime()) / 60_000) : null;
     const titulo = `⚠️ Tarea atascada (${t.estado}) — ${t.agente_asignado}`;
     const cuerpo = [
       titulo,

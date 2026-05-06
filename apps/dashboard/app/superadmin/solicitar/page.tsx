@@ -116,6 +116,7 @@ export default async function SolicitarPage({ searchParams }: Props) {
       <div className="flex-1 min-w-0">
         {convActiva && <MarcadorLeido conversacionId={convActiva} userId={user.id} />}
         <ChatPM
+          key={convActiva ?? 'nueva'}
           conversacionIdInicial={convActiva}
           mensajesIniciales={mensajesIniciales}
           empresas={empresas}

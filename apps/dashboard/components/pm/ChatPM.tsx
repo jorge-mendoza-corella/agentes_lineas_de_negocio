@@ -57,6 +57,17 @@ async function readHttpError(res: Response): Promise<string> {
   }
 }
 
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return generateId();
+  }
+  // Fallback para contextos no-HTTPS (HTTP directo)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
 function fmtTime(s: number) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
@@ -356,8 +367,8 @@ export default function ChatPM({
     stopSpeaking();
     setSpeakingId(null);
 
-    const idUsuario = crypto.randomUUID();
-    const idAgente = crypto.randomUUID();
+    const idUsuario = generateId();
+    const idAgente = generateId();
 
     setMensajes(prev => [
       ...prev,
@@ -423,7 +434,7 @@ export default function ChatPM({
               ));
             }
             if (ev.type === 'tool_start') {
-              const toolId = crypto.randomUUID();
+              const toolId = generateId();
               setToolEvents(prev => [...prev, { id: toolId, tool: ev.tool, estado: 'running' }]);
             }
             if (ev.type === 'tool_end') {
@@ -478,8 +489,8 @@ export default function ChatPM({
     stopSpeaking();
     setSpeakingId(null);
 
-    const idUsuario = crypto.randomUUID();
-    const idAgente = crypto.randomUUID();
+    const idUsuario = generateId();
+    const idAgente = generateId();
 
     setMensajes(prev => [
       ...prev,
@@ -539,7 +550,7 @@ export default function ChatPM({
               ));
             }
             if (ev.type === 'tool_start') {
-              const toolId = crypto.randomUUID();
+              const toolId = generateId();
               setToolEvents(prev => [...prev, { id: toolId, tool: ev.tool, estado: 'running' }]);
             }
             if (ev.type === 'tool_end') {
@@ -594,7 +605,7 @@ export default function ChatPM({
       const { blob: compressed, mimeType } = await comprimirImagen(blob);
       const base64 = await blobToBase64(compressed);
       setAdjuntos(prev => [...prev, {
-        id: crypto.randomUUID(),
+        id: generateId(),
         tipo: 'imagen',
         nombre: 'imagen.jpg',
         mimeType,
@@ -627,7 +638,7 @@ export default function ChatPM({
         preview = undefined;
       }
       setAdjuntos(prev => [...prev, {
-        id: crypto.randomUUID(),
+        id: generateId(),
         tipo,
         nombre,
         mimeType,

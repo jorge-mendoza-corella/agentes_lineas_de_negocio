@@ -11,6 +11,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
+      '@google/generative-ai':
+        specifier: ^0.24.0
+        version: 0.24.1
       '@supabase/supabase-js':
         specifier: ^2.43.0
         version: 2.105.1

@@ -3,11 +3,13 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { createClient } = require('@supabase/supabase-js');
 const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const token = process.env.TELEGRAM_BOT_TOKEN_SEBAS || process.env.TELEGRAM_BOT_TOKEN;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
+const geminiKey = process.env.GOOGLE_GEMINI_API_KEY;
 const jorgeChatId = process.env.JORGE_CHAT_ID;
 
 if (!token) { console.error('[SEBAS] FATAL: TELEGRAM_BOT_TOKEN_SEBAS no configurado'); process.exit(1); }
@@ -23,7 +25,31 @@ console.log('🎯 SEBAS PM Global iniciando...');
 console.log(`📱 Token: ${token ? token.slice(0, 10) + '...' : 'NO configurado ❌'}`);
 console.log(`🔗 Supabase: ${supabaseUrl ? 'configurado ✅' : 'NO configurado ❌'}`);
 console.log(`🧠 Anthropic: ${anthropicKey ? 'configurado ✅' : 'NO configurado ❌'}`);
+console.log(`🎤 Gemini (STT audio): ${geminiKey ? 'configurado ✅' : 'NO configurado ❌'}`);
 if (!supabase) console.warn('[SEBAS] ⚠️  Supabase no configurado — tools de BD no disponibles');
+if (!geminiKey) console.warn('[SEBAS] ⚠️  GOOGLE_GEMINI_API_KEY no configurada — no se podrán transcribir audios');
+
+// ── Transcripción de audio con Gemini ───────────────────────────────────────
+const gemini = geminiKey ? new GoogleGenerativeAI(geminiKey) : null;
+
+async function transcribirAudio(audioBuffer, mimeType) {
+  if (!gemini) throw new Error('Gemini no configurado — no se pueden transcribir audios');
+  const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const audioBase64 = audioBuffer.toString('base64');
+  const result = await model.generateContent([
+    'Transcribe exactamente este mensaje de voz en español. Responde únicamente con la transcripción, sin texto adicional ni explicaciones:',
+    { inlineData: { data: audioBase64, mimeType: mimeType.split(';')[0] } },
+  ]);
+  return result.response.text().trim();
+}
+
+async function descargarArchivoTelegram(fileId) {
+  const link = await bot.getFileLink(fileId);
+  const res = await fetch(link);
+  if (!res.ok) throw new Error(`Telegram getFile falló: HTTP ${res.status}`);
+  const arr = await res.arrayBuffer();
+  return Buffer.from(arr);
+}
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -451,11 +477,34 @@ async function enviarTexto(chatId, texto) {
 
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text;
+  const senderName = msg.from?.first_name || 'Usuario';
+
+  // ── Mensaje de voz / audio: transcribir con Gemini ───────────────────────
+  let text = msg.text;
+  if (!text && (msg.voice || msg.audio)) {
+    if (!gemini) {
+      await bot.sendMessage(chatId, '❌ No puedo procesar audios todavía: GOOGLE_GEMINI_API_KEY no está configurada en el servidor.').catch(() => null);
+      return;
+    }
+    const fileId   = (msg.voice || msg.audio).file_id;
+    const mimeType = (msg.voice || msg.audio).mime_type || (msg.voice ? 'audio/ogg' : 'audio/mpeg');
+    try { await bot.sendChatAction(chatId, 'typing'); } catch {}
+    try {
+      console.log(`[SEBAS] Audio de ${senderName} (${chatId}) — transcribiendo (${mimeType})...`);
+      const buf = await descargarArchivoTelegram(fileId);
+      text = await transcribirAudio(buf, mimeType);
+      console.log(`[SEBAS] Transcripción: ${text}`);
+      // Confirma al usuario lo que entendió
+      await bot.sendMessage(chatId, `🎤 _Entendí:_ "${text}"`, { parse_mode: 'Markdown' }).catch(() => null);
+    } catch (e) {
+      console.error('[SEBAS] Error transcribiendo audio:', e.message);
+      await bot.sendMessage(chatId, `❌ No pude transcribir el audio: ${e.message}`).catch(() => null);
+      return;
+    }
+  }
 
   if (!text) return;
 
-  const senderName = msg.from?.first_name || 'Usuario';
   console.log(`[SEBAS] Mensaje de ${senderName} (${chatId}): ${text}`);
 
   // Comando /reset

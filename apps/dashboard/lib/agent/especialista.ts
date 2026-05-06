@@ -463,10 +463,10 @@ ${planOriginal}
       if (!rowSuper?.id) return { resultado: JSON.stringify({ error: 'No se encontró usuario admin' }), terminar: false };
       const adminId = rowSuper.id;
 
-      // Buscar conversación más reciente del usuario
+      // Buscar conversación más recientemente activa del usuario (updated_at para que llegue al chat abierto)
       const { data: conv } = await db.from('conversaciones_pm')
         .select('id').eq('usuario_id', adminId)
-        .order('created_at', { ascending: false }).limit(1).maybeSingle() as { data: { id: string } | null };
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle() as { data: { id: string } | null };
 
       let convId: string | null = conv?.id ?? null;
       if (!convId) {
@@ -778,10 +778,27 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
            msg.includes('network') || msg.includes('socket');
   }
 
+  // Helper: verifica si la tarea sigue en_progreso (ningún tool terminal fue llamado)
+  async function verificarYNotificarSiAtascado(motivo: string) {
+    try {
+      const { data: tareaFinal } = await db.from('tareas').select('estado').eq('id', tareaId).maybeSingle();
+      if (tareaFinal?.estado === 'en_progreso') {
+        await handleTool('reportar_bloqueante', {
+          problema: motivo,
+          accion_requerida: 'Revisar la bitácora, ajustar el plan de ejecución y reanudar la tarea',
+        }, agente, tareaId, db);
+      }
+    } catch (e2) {
+      console.error(`[especialista:${agente}] verificarYNotificarSiAtascado error:`, e2);
+    }
+  }
+
   try {
     if (tieneAnthropic) {
       try {
         await loopClaude(systemPrompt, tareaId, agente, db);
+        // Si el loop terminó normalmente pero la tarea sigue en_progreso → agotó iteraciones sin resolver
+        await verificarYNotificarSiAtascado('El agente agotó el límite de iteraciones (10) sin completar la tarea ni reportar un bloqueante explícito');
         return;
       } catch (claudeErr: unknown) {
         const msg = claudeErr instanceof Error ? claudeErr.message : String(claudeErr);
@@ -802,6 +819,8 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
     for (let intento = 0; intento < MAX_REINTENTOS; intento++) {
       try {
         await loopGemini(systemPrompt, tareaId, agente, db);
+        // Igual que Claude: verificar si quedó atascado
+        await verificarYNotificarSiAtascado('El agente agotó el límite de iteraciones (10) con Gemini sin completar la tarea ni reportar un bloqueante explícito');
         return;
       } catch (geminiErr: unknown) {
         if (!esErrorDeRed(geminiErr) || intento === MAX_REINTENTOS - 1) throw geminiErr;
@@ -834,6 +853,12 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
       await db.from('tareas').update({ notas: `Error: ${msg}` }).eq('id', tareaId);
     }
     await db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', agente);
+    // Notificar al PM Global sobre el crash para que lo gestione proactivamente
+    try {
+      await handleTool('notificar_usuario', {
+        mensaje: `⚠️ **${agente}** falló con un error inesperado.\n\n**Tarea:** ${tareaId}\n**Error:** ${msg.slice(0, 300)}\n\nLa tarea puede reanudarse una vez revisado el problema. Consulta la bitácora para más detalles.`,
+      }, agente, tareaId, db);
+    } catch {}
   }
 }
 

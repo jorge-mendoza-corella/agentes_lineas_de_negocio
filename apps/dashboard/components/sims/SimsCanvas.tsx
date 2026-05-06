@@ -12,7 +12,7 @@ type LoungeAct     = 'playing' | 'sleeping' | 'chatting' | 'drinking' | 'idle';
 type EstiloAvatares = 'humanos' | 'animales' | 'mixto';
 
 interface Avatar  { id: string; agente_nombre: string | null; estado_animacion: EstadoAnim }
-interface Entrada { id: string; agente: string; accion: string; creado_en: string; tarea_id?: string | null }
+interface Entrada { id: string; agente: string; accion: string; creado_en: string; tarea_id?: string | null; paso_index?: number | null }
 interface Tarea   {
   id: string; agente_asignado: string; descripcion: string; estado: string;
   notas: string | null; plan_ejecucion?: string | null;
@@ -736,6 +736,9 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   const [estiloAvatares, setEstiloAvatares]     = useState<EstiloAvatares>('humanos');
   const [cancelarTodosConfirm, setCancelarTodosConfirm] = useState(false);
   const [cancelandoTodos, setCancellandoTodos]           = useState(false);
+  // Pasos expandidos manualmente por el usuario (clave: `${tareaId}:${pasoIdx}`).
+  // Si no está aquí: se aplica la lógica auto (paso activo expandido, completados colapsados).
+  const [pasosExpandidos, setPasosExpandidos]           = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const map: Record<string, EstadoAnim> = {};
@@ -1539,217 +1542,198 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                             if (allSSH.length === 0) return null;
                             const total = allSSH.length;
                             const newestIsPending = allSSH[0]?.accion.startsWith('🖥️') ?? false;
+
+                            // Helper para renderizar una card de comando/output
+                            const renderCard = (b: Entrada, num: number, isPending: boolean, isNewest: boolean) => {
+                              const isCmd     = b.accion.startsWith('🖥️');
+                              const txt       = isCmd
+                                ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
+                                : b.accion.replace(/^📤\s*SSH resultado \(exit [^)]+\):\s*/, '');
+                              const d = new Date(b.creado_en);
+                              const tsHora = d.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+                              const tsFecha = d.toLocaleDateString('es-MX', { day:'numeric', month:'short' });
+                              const exitMatch = !isCmd ? b.accion.match(/exit (\d+)/) : null;
+                              const exitCode  = exitMatch ? exitMatch[1] : null;
+                              const isError   = exitCode != null && exitCode !== '0';
+                              const isOk      = exitCode === '0';
+                              const accentColor = isPending ? '#3b82f6' : isError ? '#ef4444' : isCmd ? '#22d3ee' : '#334155';
+                              const card = (
+                                <div key={b.id} style={{
+                                  borderRadius: 8,
+                                  background: isPending ? 'rgba(12,18,33,0.95)' : isError ? 'rgba(30,8,8,0.85)' : isCmd ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
+                                  border: isPending ? 'none' : `1px solid ${accentColor}22`,
+                                  display:'flex', overflow:'hidden', position: 'relative',
+                                }}>
+                                  {isPending && <div className="ssh-pending-border" />}
+                                  <div style={{ width:28, flexShrink:0, background:`${accentColor}18`, borderRight:`2px solid ${accentColor}55`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3, padding:'6px 0' }}>
+                                    <span style={{ fontSize:11 }}>{isCmd ? '⌨' : isError ? '⚠' : '↩'}</span>
+                                    <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase', color:accentColor, writingMode:'vertical-rl', transform:'rotate(180deg)' }}>{isCmd ? 'CMD' : 'OUT'}</span>
+                                  </div>
+                                  <div style={{ flex:1, padding:'6px 9px 7px', minWidth:0 }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
+                                      <span style={{ fontSize:9, fontWeight:800, fontFamily:'monospace', background:`${accentColor}22`, color:accentColor, padding:'1px 5px', borderRadius:4, flexShrink:0 }}>#{num}</span>
+                                      {isNewest && !isPending && (
+                                        <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
+                                      )}
+                                      <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
+                                        <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora}</span>
+                                        <span style={{ fontSize:8, color:'#475569' }}>{tsFecha}</span>
+                                      </div>
+                                      <div style={{ marginLeft:'auto', flexShrink:0 }}>
+                                        {isPending && <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa' }}>⟳ ESPERANDO</span>}
+                                        {isError   && <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode}</span>}
+                                        {!isPending && isOk && <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>}
+                                      </div>
+                                    </div>
+                                    <p style={{ fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0, color: isPending ? '#93c5fd' : isCmd ? '#4ade80' : isError ? '#fca5a5' : '#64748b' }}>
+                                      {isCmd && <span style={{ color: isPending ? '#60a5fa' : '#22d3ee', marginRight:5, fontWeight:700 }}>$</span>}
+                                      {txt.slice(0, 400)}{txt.length > 400 ? '…' : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                              return isPending ? <div key={b.id} className="ssh-pending-wrap">{card}</div> : card;
+                            };
+
+                            const headerSection = (
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span style={{ fontSize:9, fontWeight:800, letterSpacing:'0.1em', textTransform:'uppercase', color:`${selCfg.color}88` }}>Comandos SSH</span>
+                                  <span style={{ fontSize:9, fontWeight:700, background:'rgba(255,255,255,0.06)', color:'#64748b', padding:'1px 6px', borderRadius:99 }}>{total}</span>
+                                </div>
+                                {newestIsPending && (
+                                  <div className="ml-auto flex items-center gap-1.5">
+                                    <span style={{ width:6, height:6, borderRadius:'50%', background:'#3b82f6', display:'inline-block' }} className="animate-ping" />
+                                    <span style={{ fontSize:9, fontWeight:700, color:'#60a5fa' }}>AGUARDANDO RESPUESTA</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+
+                            // ── Modo agrupado por paso (cuando hay pasos parseados Y al menos un comando con paso_index) ──
+                            const tieneIndexs = allSSH.some(b => typeof b.paso_index === 'number' && b.paso_index! > 0);
+                            if (steps.length > 0 && tieneIndexs) {
+                              // Agrupar por paso (1..N) + grupo "sin paso"
+                              const grupos: Map<number | 'sin', Entrada[]> = new Map();
+                              for (const b of allSSH) {
+                                const k: number | 'sin' = (typeof b.paso_index === 'number' && b.paso_index! > 0) ? b.paso_index! : 'sin';
+                                if (!grupos.has(k)) grupos.set(k, []);
+                                grupos.get(k)!.push(b);
+                              }
+                              const stepActiveIdx = (t.estado === 'en_progreso')
+                                ? Math.min(doneCount, steps.length - 1) + 1   // 1-based
+                                : -1;
+                              return (
+                                <div className="mt-3">
+                                  {headerSection}
+                                  <div className="space-y-2">
+                                    {steps.map((stepLabel, i) => {
+                                      const stepNum = i + 1;
+                                      const cmds = grupos.get(stepNum) ?? [];
+                                      if (cmds.length === 0) return null;
+                                      const stepDone = t.estado === 'completada' || (doneCount > 0 && i < doneCount);
+                                      const stepActive = stepActiveIdx === stepNum;
+                                      const stepHasPending = stepActive && cmds[0]?.accion.startsWith('🖥️') && cmds === allSSH.slice(0, cmds.length);
+                                      const key = `${t.id}:${stepNum}`;
+                                      const manual = pasosExpandidos[key];
+                                      // Default: paso activo expandido, completado colapsado, otros colapsados
+                                      const expanded = manual !== undefined ? manual : (stepActive || stepHasPending);
+                                      return (
+                                        <div key={stepNum} style={{
+                                          borderRadius: 10,
+                                          border: `1px solid ${stepActive ? `${selCfg.color}40` : stepDone ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.06)'}`,
+                                          background: stepActive ? `${selCfg.color}06` : stepDone ? 'rgba(34,197,94,0.03)' : 'transparent',
+                                        }}>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setPasosExpandidos(p => ({ ...p, [key]: !expanded })); }}
+                                            className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-white/[0.02] transition-colors"
+                                            style={{ borderRadius: 10 }}>
+                                            <span style={{ fontSize:10 }}>{stepDone ? '✅' : stepActive ? '🔵' : '⚪'}</span>
+                                            <span style={{ fontSize:9, fontWeight:800, color: stepDone ? '#86efac' : stepActive ? selCfg.accent : '#64748b', flexShrink:0 }}>
+                                              PASO {stepNum}
+                                            </span>
+                                            <span style={{ fontSize:9, color: stepDone ? '#86efac' : stepActive ? '#cbd5e1' : '#64748b', textAlign:'left', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                              {stepLabel}
+                                            </span>
+                                            <span style={{ fontSize:9, fontWeight:700, background:'rgba(255,255,255,0.05)', color:'#64748b', padding:'1px 6px', borderRadius:99 }}>{cmds.length}</span>
+                                            <span style={{ color:'#64748b', fontSize:10 }}>{expanded ? '▾' : '▸'}</span>
+                                          </button>
+                                          {expanded && (
+                                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5 px-2 pb-2">
+                                              {cmds.map(b => {
+                                                const idxGlobal = allSSH.findIndex(x => x.id === b.id);
+                                                const num = total - idxGlobal;
+                                                const isPending = idxGlobal === 0 && newestIsPending;
+                                                const isNewest = idxGlobal === 0;
+                                                return renderCard(b, num, isPending, isNewest);
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    {/* Comandos sin paso asignado (datos viejos antes de la migración) */}
+                                    {(grupos.get('sin')?.length ?? 0) > 0 && (() => {
+                                      const cmds = grupos.get('sin')!;
+                                      const key = `${t.id}:sin`;
+                                      const manual = pasosExpandidos[key];
+                                      const expanded = manual !== undefined ? manual : false;
+                                      return (
+                                        <div style={{ borderRadius:10, border:'1px solid rgba(255,255,255,0.06)' }}>
+                                          <button onClick={(e) => { e.stopPropagation(); setPasosExpandidos(p => ({ ...p, [key]: !expanded })); }}
+                                            className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-white/[0.02]"
+                                            style={{ borderRadius:10 }}>
+                                            <span style={{ fontSize:10 }}>📦</span>
+                                            <span style={{ fontSize:9, fontWeight:700, color:'#64748b', flex:1, textAlign:'left' }}>Sin paso asignado</span>
+                                            <span style={{ fontSize:9, fontWeight:700, background:'rgba(255,255,255,0.05)', color:'#64748b', padding:'1px 6px', borderRadius:99 }}>{cmds.length}</span>
+                                            <span style={{ color:'#64748b', fontSize:10 }}>{expanded ? '▾' : '▸'}</span>
+                                          </button>
+                                          {expanded && (
+                                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5 px-2 pb-2">
+                                              {cmds.map(b => {
+                                                const idxGlobal = allSSH.findIndex(x => x.id === b.id);
+                                                const num = total - idxGlobal;
+                                                const isPending = idxGlobal === 0 && newestIsPending;
+                                                const isNewest = idxGlobal === 0;
+                                                return renderCard(b, num, isPending, isNewest);
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // ── Modo plano (sin pasos definidos o sin paso_index aún) ──
                             return (
                               <div className="mt-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <span style={{ fontSize:9, fontWeight:800, letterSpacing:'0.1em', textTransform:'uppercase', color:`${selCfg.color}88` }}>Comandos SSH</span>
-                                    <span style={{ fontSize:9, fontWeight:700, background:'rgba(255,255,255,0.06)', color:'#64748b', padding:'1px 6px', borderRadius:99 }}>{total}</span>
-                                  </div>
-                                  {newestIsPending && (
-                                    <div className="ml-auto flex items-center gap-1.5">
-                                      <span style={{ width:6, height:6, borderRadius:'50%', background:'#3b82f6', display:'inline-block' }} className="animate-ping" />
-                                      <span style={{ fontSize:9, fontWeight:700, color:'#60a5fa' }}>AGUARDANDO RESPUESTA</span>
-                                    </div>
-                                  )}
-                                </div>
+                                {headerSection}
                                 <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
                                   {allSSH.map((b, i) => {
-                                    const isCmd     = b.accion.startsWith('🖥️');
                                     const isPending = i === 0 && newestIsPending;
                                     const isNewest  = i === 0;
                                     const num       = total - i;
-                                    const txt       = isCmd
-                                      ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
-                                      : b.accion.replace(/^📤\s*SSH resultado \(exit [^)]+\):\s*/, '');
-                                    const d = new Date(b.creado_en);
-                                    const tsHora = d.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-                                    const tsFecha = d.toLocaleDateString('es-MX', { day:'numeric', month:'short' });
-                                    const exitMatch = !isCmd ? b.accion.match(/exit (\d+)/) : null;
-                                    const exitCode  = exitMatch ? exitMatch[1] : null;
-                                    const isError   = exitCode != null && exitCode !== '0';
-                                    const isOk      = exitCode === '0';
-
-                                    // franja lateral: cyan=cmd, slate=output, rojo=error, azul=pending
-                                    const accentColor = isPending ? '#3b82f6' : isError ? '#ef4444' : isCmd ? '#22d3ee' : '#334155';
-                                    const card = (
-                                      <div key={b.id} style={{
-                                        borderRadius: 8,
-                                        background: isPending ? 'rgba(12,18,33,0.95)' : isError ? 'rgba(30,8,8,0.85)' : isCmd ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
-                                        border: isPending ? 'none' : `1px solid ${accentColor}22`,
-                                        display:'flex', overflow:'hidden',
-                                        position: 'relative',
-                                      }}>
-                                        {isPending && <div className="ssh-pending-border" />}
-                                        {/* Franja lateral de tipo */}
-                                        <div style={{
-                                          width: 28, flexShrink:0,
-                                          background: `${accentColor}18`,
-                                          borderRight: `2px solid ${accentColor}55`,
-                                          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3,
-                                          padding:'6px 0',
-                                        }}>
-                                          <span style={{ fontSize:11 }}>{isCmd ? '⌨' : isError ? '⚠' : '↩'}</span>
-                                          <span style={{
-                                            fontSize:7, fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase',
-                                            color: accentColor, writingMode:'vertical-rl', transform:'rotate(180deg)',
-                                          }}>{isCmd ? 'CMD' : 'OUT'}</span>
-                                        </div>
-
-                                        {/* Contenido */}
-                                        <div style={{ flex:1, padding:'6px 9px 7px', minWidth:0 }}>
-                                          {/* Meta row */}
-                                          <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
-                                            <span style={{
-                                              fontSize:9, fontWeight:800, fontFamily:'monospace',
-                                              background: `${accentColor}22`, color: accentColor,
-                                              padding:'1px 5px', borderRadius:4, flexShrink:0,
-                                            }}>#{num}</span>
-
-                                            {isNewest && !isPending && (
-                                              <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
-                                            )}
-
-                                            <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
-                                              <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora}</span>
-                                              <span style={{ fontSize:8, color:'#475569' }}>{tsFecha}</span>
-                                            </div>
-
-                                            <div style={{ marginLeft:'auto', flexShrink:0 }}>
-                                              {isPending && <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa' }}>⟳ ESPERANDO</span>}
-                                              {isError   && <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode}</span>}
-                                              {!isPending && isOk && <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>}
-                                            </div>
-                                          </div>
-
-                                          <p style={{
-                                            fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0,
-                                            color: isPending ? '#93c5fd' : isCmd ? '#4ade80' : isError ? '#fca5a5' : '#64748b',
-                                          }}>
-                                            {isCmd && <span style={{ color: isPending ? '#60a5fa' : '#22d3ee', marginRight:5, fontWeight:700 }}>$</span>}
-                                            {txt.slice(0, 400)}{txt.length > 400 ? '…' : ''}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    );
-
-                                    return isPending
-                                      ? <div key={b.id} className="ssh-pending-wrap">{card}</div>
-                                      : card;
+                                    return renderCard(b, num, isPending, isNewest);
                                   })}
                                 </div>
                               </div>
                             );
                           })()}
-                          {steps.length === 0 && bitacora.filter(b => b.tarea_id === t.id).length > 0 && (() => {
-                            const allEntries = bitacora.filter(b => b.tarea_id === t.id);
-                            const allSSH2 = allEntries.filter(b => b.accion.startsWith('🖥️') || b.accion.startsWith('📤'));
-                            const nonSSH   = allEntries.filter(b => !b.accion.startsWith('🖥️') && !b.accion.startsWith('📤'));
-                            const newestIsPending2 = allSSH2[0]?.accion.startsWith('🖥️') ?? false;
-                            const total2 = allSSH2.length;
+                          {bitacora.filter(b => b.tarea_id === t.id && !b.accion.startsWith('🖥️') && !b.accion.startsWith('📤')).length > 0 && (() => {
+                            const nonSSH = bitacora.filter(b => b.tarea_id === t.id && !b.accion.startsWith('🖥️') && !b.accion.startsWith('📤'));
                             return (
                               <div className="space-y-1">
-                                {allSSH2.length > 0 && (
-                                  <>
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <div className="flex items-center gap-1.5">
-                                        <span style={{ fontSize:9, fontWeight:800, letterSpacing:'0.1em', textTransform:'uppercase', color:`${selCfg.color}88` }}>Comandos SSH</span>
-                                        <span style={{ fontSize:9, fontWeight:700, background:'rgba(255,255,255,0.06)', color:'#64748b', padding:'1px 6px', borderRadius:99 }}>{total2}</span>
-                                      </div>
-                                      {newestIsPending2 && (
-                                        <div className="ml-auto flex items-center gap-1.5">
-                                          <span style={{ width:6, height:6, borderRadius:'50%', background:'#3b82f6', display:'inline-block' }} className="animate-ping" />
-                                          <span style={{ fontSize:9, fontWeight:700, color:'#60a5fa' }}>AGUARDANDO RESPUESTA</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
-                                      {allSSH2.map((b, i) => {
-                                        const isCmd2     = b.accion.startsWith('🖥️');
-                                        const isPending2 = i === 0 && newestIsPending2;
-                                        const isNewest2  = i === 0;
-                                        const num2       = total2 - i;
-                                        const txt2       = isCmd2
-                                          ? b.accion.replace(/^🖥️\s*SSH\s*\[[^\]]+\]:\s*/, '')
-                                          : b.accion.replace(/^📤\s*SSH resultado \(exit [^)]+\):\s*/, '');
-                                        const d2 = new Date(b.creado_en);
-                                        const tsHora2  = d2.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-                                        const tsFecha2 = d2.toLocaleDateString('es-MX', { day:'numeric', month:'short' });
-                                        const exitMatch2 = !isCmd2 ? b.accion.match(/exit (\d+)/) : null;
-                                        const exitCode2  = exitMatch2 ? exitMatch2[1] : null;
-                                        const isError2   = exitCode2 != null && exitCode2 !== '0';
-                                        const isOk2      = exitCode2 === '0';
-
-                                        const accentColor2 = isPending2 ? '#3b82f6' : isError2 ? '#ef4444' : isCmd2 ? '#22d3ee' : '#334155';
-                                        const card2 = (
-                                          <div key={b.id} style={{
-                                            borderRadius: 8,
-                                            background: isPending2 ? 'rgba(12,18,33,0.95)' : isError2 ? 'rgba(30,8,8,0.85)' : isCmd2 ? 'rgba(6,12,22,0.92)' : 'rgba(15,20,28,0.55)',
-                                            border: `1px solid ${accentColor2}22`,
-                                            display:'flex', overflow:'hidden',
-                                            position: 'relative',
-                                          }}>
-                                            {isPending2 && <div className="ssh-pending-border" />}
-                                            {/* Franja lateral */}
-                                            <div style={{
-                                              width: 28, flexShrink:0,
-                                              background: `${accentColor2}18`,
-                                              borderRight: `2px solid ${accentColor2}55`,
-                                              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3,
-                                              padding:'6px 0',
-                                            }}>
-                                              <span style={{ fontSize:11 }}>{isCmd2 ? '⌨' : isError2 ? '⚠' : '↩'}</span>
-                                              <span style={{
-                                                fontSize:7, fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase',
-                                                color: accentColor2, writingMode:'vertical-rl', transform:'rotate(180deg)',
-                                              }}>{isCmd2 ? 'CMD' : 'OUT'}</span>
-                                            </div>
-
-                                            <div style={{ flex:1, padding:'6px 9px 7px', minWidth:0 }}>
-                                              <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
-                                                <span style={{
-                                                  fontSize:9, fontWeight:800, fontFamily:'monospace',
-                                                  background: `${accentColor2}22`, color: accentColor2,
-                                                  padding:'1px 5px', borderRadius:4, flexShrink:0,
-                                                }}>#{num2}</span>
-                                                {isNewest2 && !isPending2 && (
-                                                  <span style={{ fontSize:7, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', background:`${selCfg.color}22`, color:selCfg.color, padding:'1px 4px', borderRadius:3 }}>ÚLTIMO</span>
-                                                )}
-                                                <div style={{ display:'flex', alignItems:'baseline', gap:3, flexShrink:0 }}>
-                                                  <span style={{ fontSize:10, fontWeight:700, fontFamily:'monospace', color:'#e2e8f0' }}>{tsHora2}</span>
-                                                  <span style={{ fontSize:8, color:'#475569' }}>{tsFecha2}</span>
-                                                </div>
-                                                <div style={{ marginLeft:'auto', flexShrink:0 }}>
-                                                  {isPending2 && <span style={{ fontSize:8, fontWeight:700, color:'#60a5fa' }}>⟳ ESPERANDO</span>}
-                                                  {isError2   && <span style={{ fontSize:8, fontWeight:700, background:'rgba(239,68,68,0.15)', color:'#f87171', padding:'1px 5px', borderRadius:4 }}>✗ exit {exitCode2}</span>}
-                                                  {!isPending2 && isOk2 && <span style={{ fontSize:8, fontWeight:600, background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'1px 5px', borderRadius:4 }}>✓ ok</span>}
-                                                </div>
-                                              </div>
-                                              <p style={{ fontSize:10, fontFamily:'monospace', wordBreak:'break-all', lineHeight:1.5, margin:0, color: isPending2 ? '#93c5fd' : isCmd2 ? '#4ade80' : isError2 ? '#fca5a5' : '#64748b' }}>
-                                                {isCmd2 && <span style={{ color: isPending2 ? '#60a5fa' : '#22d3ee', marginRight:5, fontWeight:700 }}>$</span>}
-                                                {txt2.slice(0, 400)}{txt2.length > 400 ? '…' : ''}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        );
-
-                                        return card2;
-                                      })}
-                                    </div>
-                                  </>
-                                )}
-                                {nonSSH.length > 0 && (
-                                  <>
-                                    <p className="text-[9px] font-bold uppercase tracking-wider mt-2 mb-1" style={{ color:`${selCfg.color}60` }}>Actividad reciente</p>
-                                    {nonSSH.slice(0, 12).map((b) => (
-                                      <div key={b.id} className="rounded-lg px-2 py-1" style={{ background:'transparent' }}>
-                                        <p className="text-[8px] break-all leading-relaxed" style={{ color:'#94a3b8' }}>
-                                          {b.accion.slice(0, 200)}{b.accion.length > 200 ? '…' : ''}
-                                        </p>
-                                      </div>
-                                    ))}
-                                  </>
-                                )}
+                                <p className="text-[9px] font-bold uppercase tracking-wider mt-2 mb-1" style={{ color:`${selCfg.color}60` }}>Actividad reciente</p>
+                                {nonSSH.slice(0, 12).map((b) => (
+                                  <div key={b.id} className="rounded-lg px-2 py-1" style={{ background:'transparent' }}>
+                                    <p className="text-[8px] break-all leading-relaxed" style={{ color:'#94a3b8' }}>
+                                      {b.accion.slice(0, 200)}{b.accion.length > 200 ? '…' : ''}
+                                    </p>
+                                  </div>
+                                ))}
                               </div>
                             );
                           })()}

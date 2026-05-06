@@ -380,7 +380,18 @@ async function handleTool(
       db.from('avatares').update({ estado_animacion: 'idle' }).eq('agente_nombre', agente),
       db.from('bitacora_actividad').insert({ agente, accion: `🚧 Bloqueante: ${input.problema} — ${input.accion_requerida}`, tarea_id: tareaId }),
     ]);
-    // Auto-disparar al PM para que analice y gestione el bloqueante
+
+    // El PM Global nunca se auto-asigna para gestionar su propio bloqueante — notifica al usuario y para
+    if (agente === 'pm-global' || agente.startsWith('pm-')) {
+      try {
+        await handleTool('notificar_usuario', {
+          mensaje: `🚧 **PM Global bloqueado — necesito tu orientación.**\n\n**Problema:** ${input.problema}\n\n**Para continuar necesito:** ${input.accion_requerida}\n\n¿Cómo deseas proceder?`,
+        }, agente, tareaId, db);
+      } catch {}
+      return { resultado: JSON.stringify({ ok: true }), terminar: true };
+    }
+
+    // Auto-disparar al PM para que analice y gestione el bloqueante (solo para agentes especialistas)
     try {
       const [{ data: tareaInfo }, { data: primeraEntradaPM }] = await Promise.all([
         db.from('tareas').select('descripcion, plan_ejecucion, requerimiento_id').eq('id', tareaId).maybeSingle() as Promise<{ data: { descripcion: string; plan_ejecucion: string | null; requerimiento_id: string | null } | null }>,
@@ -782,7 +793,19 @@ Si el plan dice "Conectarse vía SSH", ese paso ya está implícito — pasa dir
   async function verificarYNotificarSiAtascado(motivo: string) {
     try {
       const { data: tareaFinal } = await db.from('tareas').select('estado').eq('id', tareaId).maybeSingle();
-      if (tareaFinal?.estado === 'en_progreso') {
+      if (tareaFinal?.estado !== 'en_progreso') return;
+
+      // El PM Global nunca se auto-asigna más tareas — pregunta al usuario directamente
+      if (agente === 'pm-global' || agente.startsWith('pm-')) {
+        await db.from('tareas').update({
+          estado: 'pendiente',
+          notas: `⚠️ Requiere orientación del usuario: ${motivo}`,
+        }).eq('id', tareaId);
+        await handleTool('notificar_usuario', {
+          mensaje: `⚠️ **PM Global necesita tu orientación.**\n\n${motivo}\n\nID de tarea: \`${tareaId}\`\n\n¿Cómo deseas proceder? Puedes darme más contexto o instrucciones adicionales.`,
+        }, agente, tareaId, db);
+      } else {
+        // Agente especialista: escala al PM como siempre
         await handleTool('reportar_bloqueante', {
           problema: motivo,
           accion_requerida: 'Revisar la bitácora, ajustar el plan de ejecución y reanudar la tarea',

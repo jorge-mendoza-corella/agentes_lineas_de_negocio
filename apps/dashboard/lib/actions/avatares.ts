@@ -196,9 +196,9 @@ async function verificarTareasEquipo(pmNombre: string, db: any): Promise<void> {
 // ── Exportadas ────────────────────────────────────────────────────────────────
 
 export async function moverAvatarADescanso(agenteNombre: string): Promise<{ ok: boolean; error?: string }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = makeDb() as any;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = makeDb() as any;
     // Pausar tareas en_progreso → pendiente para retomarse con historial al volver
     const { data: enProgreso } = await db
       .from('tareas')
@@ -229,8 +229,9 @@ export async function moverAvatarADescanso(agenteNombre: string): Promise<{ ok: 
 }
 
 export async function reanudarTrabajo(agenteNombre: string): Promise<boolean> {
-  const db = makeDb();
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = makeDb() as any;
     // Si es PM, briefear al equipo en background
     if (agenteNombre === 'pm-global' || agenteNombre === 'dev-pm') {
       verificarTareasEquipo(agenteNombre, db).catch(console.error);
@@ -239,8 +240,7 @@ export async function reanudarTrabajo(agenteNombre: string): Promise<boolean> {
     const result = await _reanudarAgente(agenteNombre, db);
 
     if (!result) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (db as any).from('avatares')
+      await db.from('avatares')
         .update({ estado_animacion: 'idle' })
         .eq('agente_nombre', agenteNombre);
     }

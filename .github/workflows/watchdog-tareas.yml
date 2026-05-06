@@ -1,0 +1,35 @@
+name: Watchdog tareas atascadas
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # cada 10 minutos
+  workflow_dispatch: {}      # permite disparo manual
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Llamar endpoint /api/watchdog-tareas
+        env:
+          DASHBOARD_URL:   ${{ secrets.DASHBOARD_URL }}
+          WATCHDOG_TOKEN:  ${{ secrets.WATCHDOG_TOKEN }}
+        run: |
+          if [ -z "$DASHBOARD_URL" ] || [ -z "$WATCHDOG_TOKEN" ]; then
+            echo "DASHBOARD_URL o WATCHDOG_TOKEN no configurados — abortando."
+            exit 0
+          fi
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $WATCHDOG_TOKEN" \
+            -H "Content-Type: application/json" \
+            -w "\n%{http_code}" \
+            "$DASHBOARD_URL/api/watchdog-tareas" \
+            --max-time 60)
+          body=$(echo "$response" | sed '$d')
+          code=$(echo "$response" | tail -n 1)
+          echo "HTTP $code"
+          echo "$body"
+          # No fallar el job si Supabase tarda — solo si el endpoint no responde
+          if [ "$code" != "200" ] && [ "$code" != "503" ]; then
+            exit 1
+          fi

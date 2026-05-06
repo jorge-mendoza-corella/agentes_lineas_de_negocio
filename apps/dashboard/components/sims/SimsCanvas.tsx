@@ -733,6 +733,8 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
   const [tareaPage, setTareaPage]               = useState<number>(5);
   const [cambioEstadoId, setCambioEstadoId]     = useState<string | null>(null);
   const [estiloAvatares, setEstiloAvatares]     = useState<EstiloAvatares>('humanos');
+  const [cancelarTodosConfirm, setCancelarTodosConfirm] = useState(false);
+  const [cancelandoTodos, setCancellandoTodos]           = useState(false);
 
   useEffect(() => {
     const map: Record<string, EstadoAnim> = {};
@@ -783,12 +785,14 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
     setFiltroEstado('');
     setTareaPage(5);
     setExpandedTareaId(null);
+    setCancelarTodosConfirm(false);
   }, [selId]);
 
   function getEstado(id: string): EstadoAnim { return estados[id] ?? 'idle'; }
   function estadoColor(e: string) {
     if (e === 'completada') return '#22c55e';
     if (e === 'en_progreso') return '#3b82f6';
+    if (e === 'cancelada') return '#ef4444';
     return '#eab308';
   }
 
@@ -1301,15 +1305,47 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                   <span className="ml-1 font-normal text-slate-600">({selTareasFiltradas.length}/{selTareas.length})</span>
                 )}
               </p>
-              {(filtroEmpresaId || filtroProyectoId || filtroEstado) && (
-                <button onClick={() => { setFiltroEmpresaId(''); setFiltroProyectoId(''); setFiltroEstado(''); }}
-                  className="text-[9px] text-slate-500 hover:text-slate-300 px-1">✕ limpiar</button>
-              )}
+              <div className="flex items-center gap-2">
+                {selTareas.some(t => t.estado === 'pendiente') && (
+                  cancelarTodosConfirm ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-slate-400">¿Confirmar?</span>
+                      <button
+                        disabled={cancelandoTodos}
+                        onClick={async () => {
+                          setCancellandoTodos(true);
+                          const pendientes = selTareas.filter(t => t.estado === 'pendiente');
+                          await Promise.all(pendientes.map(t => cambiarEstadoTareaAPI(t.id, 'cancelada')));
+                          setCancelarTodosConfirm(false);
+                          setCancellandoTodos(false);
+                        }}
+                        className="text-[9px] font-semibold px-2 py-0.5 rounded-md"
+                        style={{ background:'rgba(239,68,68,0.15)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.3)' }}>
+                        {cancelandoTodos ? '…' : 'Sí, cancelar'}
+                      </button>
+                      <button onClick={() => setCancelarTodosConfirm(false)}
+                        className="text-[9px] px-2 py-0.5 rounded-md text-slate-500 hover:text-slate-300 border border-white/10">
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setCancelarTodosConfirm(true)}
+                      className="text-[9px] font-semibold px-2 py-0.5 rounded-md transition-colors"
+                      style={{ background:'rgba(239,68,68,0.08)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.2)' }}>
+                      ✕ Cancelar pendientes
+                    </button>
+                  )
+                )}
+                {(filtroEmpresaId || filtroProyectoId || filtroEstado) && (
+                  <button onClick={() => { setFiltroEmpresaId(''); setFiltroProyectoId(''); setFiltroEstado(''); }}
+                    className="text-[9px] text-slate-500 hover:text-slate-300 px-1">✕ limpiar</button>
+                )}
+              </div>
             </div>
 
             {selTareas.length > 2 && (
               <div className="flex flex-wrap gap-1.5 mb-3">
-                {(['pendiente','en_progreso','completada'] as const).map(e => (
+                {(['pendiente','en_progreso','completada','cancelada'] as const).map(e => (
                   <button key={e} onClick={() => setFiltroEstado(filtroEstado === e ? '' : e)}
                     className="text-[9px] font-semibold px-2 py-0.5 rounded-full transition-colors"
                     style={{
@@ -1411,7 +1447,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                           })()}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          {(t.estado === 'pendiente' || t.estado === 'cancelada' || t.estado === 'en_progreso') && (
+                          {(t.estado === 'pendiente' || t.estado === 'en_progreso') && (
                             <button
                               disabled={ejecutandoId === t.id}
                               onClick={async (e) => {
@@ -1443,7 +1479,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                               { estado: 'pendiente',   label: 'Pendiente',   color: '#eab308' },
                               { estado: 'en_progreso', label: 'En progreso', color: '#3b82f6' },
                               { estado: 'completada',  label: 'Completada',  color: '#22c55e' },
-                              { estado: 'cancelada',   label: 'Cancelada',   color: '#64748b' },
+                              { estado: 'cancelada',   label: 'Cancelada',   color: '#ef4444' },
                             ] as const).filter(s => s.estado !== t.estado).map(s => (
                               <button key={s.estado}
                                 disabled={cambioEstadoId === t.id}
@@ -1755,6 +1791,7 @@ export default function SimsCanvas({ avatoresIniciales, bitacoraInicial, tareasI
                   <p className="text-xs text-slate-400 leading-snug mt-0.5">{b.accion}</p>
                 </div>
                 <span className="text-[10px] text-slate-600 shrink-0 mt-0.5">
+                  {new Date(b.creado_en).toLocaleDateString('es-MX', { day:'numeric', month:'short' })}{' '}
                   {new Date(b.creado_en).toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' })}
                 </span>
               </div>

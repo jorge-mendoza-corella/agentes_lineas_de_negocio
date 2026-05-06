@@ -1,79 +1,87 @@
-name: Deploy
+name: Deploy to VPS
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy en servidor via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_APP_URL,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,GOOGLE_GEMINI_API_KEY,INTERNAL_API_KEY,SSH_KEY_PASSPHRASE,SSH_SUDO_PASSWORD,VPS_HOST,VPS_USER,TELEGRAM_BOT_TOKEN,TELEGRAM_BOT_TOKEN_SEBAS,JORGE_CHAT_ID,TELEGRAM_CHAT_ID,CLOUDFLARE_API_TOKEN
-          script: |
-            set -e
-            cd /opt/agentes_lineas_de_negocio
-            git pull origin main
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY presente: ${#NEXT_PUBLIC_SUPABASE_ANON_KEY} chars"
+      - name: Create .env.docker from secrets
+        run: |
+          cat > .env.docker << 'EOF'
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GOOGLE_GEMINI_API_KEY=${{ secrets.GOOGLE_GEMINI_API_KEY }}
+          INTERNAL_API_KEY=${{ secrets.INTERNAL_API_KEY }}
+          JORGE_CHAT_ID=${{ secrets.JORGE_CHAT_ID }}
+          NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NODE_ENV=production
+          NEXT_TELEMETRY_DISABLED=1
+          REDIS_URL=redis://redis:6379
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN_SEBAS=${{ secrets.TELEGRAM_BOT_TOKEN_SEBAS }}
+          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          EOF
 
-            cat > apps/dashboard/.env.local << EOF
-            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
-            SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
-            NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-            DASHBOARD_URL=$NEXT_PUBLIC_APP_URL
-            ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
-            GOOGLE_GEMINI_API_KEY=$GOOGLE_GEMINI_API_KEY
-            INTERNAL_API_KEY=$INTERNAL_API_KEY
-            SSH_KEY_PATH=/app/.ssh/agent_key
-            SSH_KEY_PASSPHRASE=$SSH_KEY_PASSPHRASE
-            SSH_SUDO_PASSWORD=$SSH_SUDO_PASSWORD
-            VPS_HOST=$VPS_HOST
-            VPS_USER=$VPS_USER
-            SSH_DEFAULT_HOST=$VPS_HOST
-            SSH_DEFAULT_USER=$VPS_USER
-            TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
-            TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
-            CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN
-            EOF
+          echo "✅ .env.docker created:"
+          wc -l .env.docker
+          head -5 .env.docker
 
-            cat > .env << EOF
-            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
-            NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-            SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
-            ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
-            GOOGLE_GEMINI_API_KEY=$GOOGLE_GEMINI_API_KEY
-            INTERNAL_API_KEY=$INTERNAL_API_KEY
-            TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
-            TELEGRAM_BOT_TOKEN_SEBAS=$TELEGRAM_BOT_TOKEN_SEBAS
-            JORGE_CHAT_ID=$JORGE_CHAT_ID
-            EOF
-
-            docker compose build
-            docker compose up -d --force-recreate
-            docker compose ps
+      - name: Deploy to VPS via SSH
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_GEMINI_API_KEY: ${{ secrets.GOOGLE_GEMINI_API_KEY }}
-          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY_PASSPHRASE: ${{ secrets.SSH_KEY_PASSPHRASE }}
-          SSH_SUDO_PASSWORD: ${{ secrets.SSH_SUDO_PASSWORD }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_BOT_TOKEN_SEBAS: ${{ secrets.TELEGRAM_BOT_TOKEN_SEBAS }}
-          JORGE_CHAT_ID: ${{ secrets.JORGE_CHAT_ID }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          echo "📤 Transferring .env.docker to VPS..."
+          scp -v -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            .env.docker "$SSH_USER@$SSH_HOST:/home/srvsozu/.openclaw/workspace/agentes_lineas_de_negocio/.env.docker"
+
+          echo "🚀 Redeploying containers..."
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=60 "$SSH_USER@$SSH_HOST" << 'SSHEOF'
+          set -e
+          cd /home/srvsozu/.openclaw/workspace/agentes_lineas_de_negocio
+          echo "📂 Current directory: $(pwd)"
+
+          echo "📥 Pulling latest code from main..."
+          git pull origin main
+
+          echo "📄 Checking .env.docker:"
+          ls -lh .env.docker
+          echo "---"
+          head -3 .env.docker
+          echo "---"
+
+          echo "🛑 Stopping containers..."
+          docker-compose down --remove-orphans || true
+
+          echo "🔨 Building new image..."
+          docker-compose build --no-cache
+
+          echo "🚀 Starting containers..."
+          docker-compose up -d
+
+          echo "✅ Deployment complete"
+          docker-compose ps
+          SSHEOF
+
+      - name: Deployment complete
+        run: echo "✅ Workflow finished successfully"

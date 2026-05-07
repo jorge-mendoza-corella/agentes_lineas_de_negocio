@@ -581,7 +581,7 @@ export async function POST(req: NextRequest) {
     proyectoNombre,
     proyectoId: body.proyecto_id,
   });
-  const MAX = 5;
+  const MAX = 15;
   console.log('[pm-global] step: creando ReadableStream...');
 
   const stream = new ReadableStream({
@@ -636,6 +636,7 @@ export async function POST(req: NextRequest) {
           let textoEnviadoPorClaude = false;
 
           try {
+            let agotoIteraciones = false;
             for (let i = 0; i < MAX; i++) {
               const claudeStream = anthropic.messages.stream({
                 model: 'claude-sonnet-4-6',
@@ -672,6 +673,31 @@ export async function POST(req: NextRequest) {
                 toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result });
               }
               messages.push({ role: 'user', content: toolResults });
+              if (i === MAX - 1) agotoIteraciones = true;
+            }
+
+            // Si llegamos al límite sin emitir texto final, forzar un cierre con resumen.
+            // Reintentamos UNA vez sin tools para que Claude obligatoriamente emita texto.
+            if (agotoIteraciones && !textoEnviadoPorClaude) {
+              console.warn('[pm-global] agotó iteraciones sin emitir texto — forzando cierre');
+              messages.push({
+                role: 'user',
+                content: 'Has alcanzado el límite de iteraciones de tools. NO uses más tools. Resume al usuario en español qué tareas creaste, qué consultaste y qué decisiones tomaste hasta ahora. Si quedó algo pendiente, dilo claramente. Responde SOLO con texto.',
+              });
+              const cierre = await anthropic.messages.create({
+                model: 'claude-sonnet-4-6',
+                max_tokens: 2048,
+                system: systemPrompt,
+                messages,
+                // Sin tools: forzamos texto
+              });
+              for (const block of cierre.content) {
+                if (block.type === 'text') {
+                  textoFinal += block.text;
+                  send({ type: 'text', delta: block.text });
+                  textoEnviadoPorClaude = true;
+                }
+              }
             }
             usoClaude = true;
           } catch (claudeErr) {
